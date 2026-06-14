@@ -32,12 +32,22 @@
       <button class="cat-chip" data-cat="gas"><span>⛽</span> Gas</button>
       <button class="cat-chip" data-cat="ev"><span>⚡</span> EV</button>
     </div>
+    <button id="map-toggle" class="chip" aria-label="Toggle map">🗺</button>
     <button id="settings-btn" class="chip" aria-label="Settings">⚙︎</button>
   </nav>
 
   <main>
+    <div id="map" class="map hidden"></div>
     <div id="quick-dest" class="quick hidden"></div>
     <div id="heading-banner" class="hidden"></div>
+    <div id="controls" class="hidden">
+      <div class="sort-seg" id="sort-seg">
+        <button class="sort-btn active" data-sort="best">Best</button>
+        <button class="sort-btn" data-sort="closest">Closest</button>
+        <button class="sort-btn" data-sort="cheapest">Cheapest</button>
+      </div>
+      <button id="opennow-toggle" class="chip">Open now</button>
+    </div>
     <ul id="results"></ul>
     <div id="empty" class="empty hidden"></div>
   </main>

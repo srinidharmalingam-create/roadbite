@@ -133,6 +133,32 @@ body {
 /* ---------- Main ---------- */
 main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 
+/* Map */
+.map {
+  width: 100%; height: 200px; border-radius: 14px; overflow: hidden;
+  margin: 4px 0 12px; background: var(--fill);
+}
+
+/* Sort + Open-now controls row */
+#controls {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.sort-seg {
+  display: flex; background: var(--fill); border-radius: 10px; padding: 3px; flex: 1;
+}
+.sort-btn {
+  flex: 1; border: 0; background: transparent; color: var(--label);
+  font-size: 15px; font-weight: 600; padding: 8px 4px; border-radius: 8px;
+  cursor: pointer; transition: .15s;
+}
+.sort-btn.active {
+  background: var(--seg-sel); color: var(--label);
+  box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 1px 1px rgba(0,0,0,.04);
+}
+#opennow-toggle { font-size: 15px; }
+#opennow-toggle.active { background: var(--green); color: #fff; }
+#map-toggle.active { background: var(--blue); color: #fff; }
+
 /* Quick destination chips (Home + favorites) */
 .quick {
   display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px;

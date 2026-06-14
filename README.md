@@ -15,6 +15,9 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 - **Set a destination** (Settings, e.g. "Lewiston, ME") to fix your travel direction toward it — more reliable than live heading, and works while stopped. Leave blank to use live GPS heading. The header then shows distance remaining to the destination.
 - **Home + Favorite destinations** (Settings): save a Home and any number of favorites; they appear as one-tap chips at the top of the home screen (plus a "📍 Live" chip to switch back to live heading).
 - **Gas prices** on gas-station rows (from Google's `fuelOptions`, where reported) and **EV charger speed + plug count** on charging rows (Google does not expose EV pricing).
+- **Sort**: Best (rating + detour + distance), Closest (distance from you), or Cheapest (gas price first).
+- **Open now** toggle hides places that are currently closed.
+- **Map view** (🗺 in the top bar): a Google map above the list showing your location and the result pins, colored by category. Toggle it off to save data. Requires the API key; fails gracefully (the list always works even if the map can't load).
 - Filters food & coffee by **minimum rating** (default 4.0★) and **minimum review count** (default 50). Gas and EV are ranked by **proximity** instead (ratings there are sparse).
 - Estimates **detour** as roughly 2× the perpendicular distance from your route line (off the road and back) and drops anything beyond your max-detour setting.
 - Shows each spot's **distance from you** and **city**, plus open/closed status.

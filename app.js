@@ -90,6 +90,9 @@ const settings = {
   destination: '',
   home: '',             // saved home address
   favorites: [],        // saved favorite destination strings
+  sort: 'best',         // 'best' | 'closest' | 'cheapest'
+  openNowOnly: false,
+  showMap: true,
   starbucksOnly: false,
   minRating: 4.0,
   minReviews: 50,
@@ -158,6 +161,60 @@ async function ensurePlaces() {
   return state.placesLib;
 }
 
+// ---------- Map (optional, fails gracefully) ----------
+const KIND_COLORS = { food: '#ff9500', coffee: '#a2845e', gas: '#5856d6', ev: '#30b0c7' };
+
+async function ensureMap() {
+  if (state.map) return state.map;
+  await ensurePlaces();                       // guarantees google is loaded
+  const { Map } = await google.maps.importLibrary('maps');
+  const el = document.getElementById('map');
+  let center = state.pos;
+  if (!center && settings.home) center = await geocodeText(settings.home);
+  state.map = new Map(el, {
+    center: center || { lat: 42.6, lng: -72.5 },   // fallback: New England
+    zoom: center ? 11 : 6,
+    disableDefaultUI: true,
+    zoomControl: true,
+    clickableIcons: false,
+    gestureHandling: 'greedy',
+  });
+  return state.map;
+}
+
+async function geocodeText(q) {
+  try {
+    const { Place } = await ensurePlaces();
+    const { places } = await Place.searchByText({ textQuery: q, fields: ['location'], maxResultCount: 1 });
+    if (places && places[0]) return { lat: places[0].location.lat(), lng: places[0].location.lng() };
+  } catch (_) {}
+  return null;
+}
+
+function updateMapMarkers() {
+  if (!state.map || !window.google) return;
+  (state.markers || []).forEach(m => m.setMap(null));
+  state.markers = [];
+  const pin = (pos, color, scale, z, title) => new google.maps.Marker({
+    position: pos, map: state.map, title, zIndex: z,
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+  });
+  for (const r of state.results) state.markers.push(pin(r.loc, KIND_COLORS[r.kind] || '#ff9500', 7, 1, r.name));
+  if (state.pos) {
+    state.markers.push(pin(state.pos, '#0a84ff', 6, 999, 'You'));
+    state.map.setCenter(state.pos);
+  }
+}
+
+async function refreshMap() {
+  if (!settings.showMap || !settings.apiKey) return;
+  try {
+    await ensureMap();
+    google.maps.event.trigger(state.map, 'resize');
+    updateMapMarkers();
+  } catch (_) { /* map is best-effort; the list still works */ }
+}
+
 // ---------- Search ----------
 async function search() {
   if (!state.pos) return;
@@ -211,9 +268,23 @@ async function search() {
     if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
   }
 
-  state.results = merged.map(rankPlace).filter(Boolean)
-    .sort((a, b) => a.score - b.score).slice(0, 40);
+  state.results = sortResults(merged.map(rankPlace).filter(Boolean)).slice(0, 40);
   render();
+}
+
+// Apply the active sort. Default "best" = combined score (rating + detour + distance).
+function sortResults(list) {
+  const by = settings.sort;
+  if (by === 'closest') return list.sort((a, b) => a.straight - b.straight);
+  if (by === 'cheapest') {
+    // Gas with a known price first (cheapest up top), then everything else by score.
+    return list.sort((a, b) => {
+      const ap = a.fuelValue ?? Infinity, bp = b.fuelValue ?? Infinity;
+      if (ap !== bp) return ap - bp;
+      return a.score - b.score;
+    });
+  }
+  return list.sort((a, b) => a.score - b.score);
 }
 
 // Resolve the destination text into coordinates (only when it changes).
@@ -334,28 +405,34 @@ function rankPlace(p) {
   let openNow = null;
   try { openNow = p.regularOpeningHours?.isOpen?.() ?? null; } catch (_) {}
 
+  // "Open now only" hides places we know are closed (keeps unknowns).
+  if (settings.openNowOnly && openNow === false) return null;
+
+  const fuel = kind === 'gas' ? fuelPriceLabel(p) : null;
+
   return {
     id: p.id, name: p.displayName, loc, rating, reviews, kind,
     isCoffee: kind === 'coffee', along, detour, straight, openNow, score,
     city: extractCity(p.addressComponents),
     typeLabel: humanizeType(p, kind),
-    fuelPrice: kind === 'gas' ? fuelPriceLabel(p) : '',
+    fuelPrice: fuel ? fuel.label : '',
+    fuelValue: fuel ? fuel.value : Infinity,
     evInfo: kind === 'ev' ? evInfoLabel(p) : '',
   };
 }
 
-// Cheapest-grade fuel price, preferring regular unleaded. "" if none reported.
+// Regular-unleaded fuel price as {label, value}. null if none reported.
 function fuelPriceLabel(p) {
   const prices = p.fuelOptions?.fuelPrices;
-  if (!prices || !prices.length) return '';
+  if (!prices || !prices.length) return null;
   const chosen = prices.find(x => x.type === 'REGULAR_UNLEADED') || prices[0];
   const m = chosen.price;
-  if (!m) return '';
+  if (!m) return null;
   const val = Number(m.units || 0) + (m.nanos || 0) / 1e9;
-  if (!val) return '';
+  if (!val) return null;
   const cur = m.currencyCode === 'USD' ? '$' : (m.currencyCode || '') + ' ';
   const grade = { REGULAR_UNLEADED: 'reg', MIDGRADE: 'mid', PREMIUM: 'prem', DIESEL: 'diesel' }[chosen.type] || '';
-  return `${cur}${val.toFixed(2)}${grade ? ' ' + grade : ''}`;
+  return { label: `${cur}${val.toFixed(2)}${grade ? ' ' + grade : ''}`, value: val };
 }
 
 // Charger speed + plug count (Google does not expose EV pricing). "" if none.
@@ -426,6 +503,7 @@ function render() {
     return;
   }
   els.empty.classList.add('hidden');
+  $('#controls').classList.remove('hidden');
 
   for (const r of state.results) {
     const li = document.createElement('li');
@@ -464,12 +542,15 @@ function render() {
     li.querySelector('.dirs').addEventListener('click', () => navigateTo(r));
     els.results.appendChild(li);
   }
+
+  if (state.map) updateMapMarkers();
 }
 
 function showEmpty(msg, emoji) {
   els.results.innerHTML = '';
   els.empty.innerHTML = (emoji ? `<span class="big">${emoji}</span>` : '') + escapeHtml(msg);
   els.empty.classList.remove('hidden');
+  $('#controls').classList.add('hidden');
 }
 
 function escapeHtml(s) {
@@ -502,6 +583,7 @@ function onPosition(coords) {
 
   setGps('on', 'GPS live');
   updateHeadingBanner();
+  if (state.map) state.map.setCenter(pos);
 
   // Re-search when we first get a fix or have moved meaningfully (>1 mi).
   if (!state.lastSearchPos || haversineMi(state.lastSearchPos, pos) > 1) {
@@ -711,11 +793,56 @@ function setupCategories() {
   });
 }
 
+// Sort segmented control + "Open now" toggle (above the results list).
+function setupControls() {
+  document.querySelectorAll('#sort-seg .sort-btn').forEach(btn => {
+    btn.classList.toggle('active', settings.sort === btn.dataset.sort);
+    btn.addEventListener('click', () => {
+      settings.sort = btn.dataset.sort;
+      document.querySelectorAll('#sort-seg .sort-btn').forEach(b => b.classList.toggle('active', b === btn));
+      saveSettings();
+      // Re-sort what we already have (no new API call needed).
+      state.results = sortResults(state.results);
+      render();
+    });
+  });
+
+  const openBtn = $('#opennow-toggle');
+  openBtn.classList.toggle('active', settings.openNowOnly);
+  openBtn.addEventListener('click', () => {
+    settings.openNowOnly = !settings.openNowOnly;
+    openBtn.classList.toggle('active', settings.openNowOnly);
+    saveSettings();
+    if (state.pos) search();
+  });
+}
+
+function setupMap() {
+  const btn = $('#map-toggle');
+  const mapEl = document.getElementById('map');
+  const apply = () => {
+    const visible = settings.showMap && !!settings.apiKey;
+    btn.classList.toggle('active', settings.showMap);
+    mapEl.classList.toggle('hidden', !visible);
+  };
+  apply();
+  btn.addEventListener('click', () => {
+    if (!settings.apiKey) { els.settings.classList.remove('hidden'); return; }  // need a key first
+    settings.showMap = !settings.showMap;
+    saveSettings();
+    apply();
+    if (settings.showMap) refreshMap();
+  });
+  if (settings.showMap && settings.apiKey) refreshMap();
+}
+
 // ---------- Wire up ----------
 function init() {
   loadSettings();
   bindSettings();
   setupCategories();
+  setupControls();
+  setupMap();
   renderQuickDest();
 
   // Surface Google auth/referrer problems instead of failing silently.
@@ -736,4 +863,4 @@ function init() {
 document.addEventListener('DOMContentLoaded', init);
 
 // Expose a few internals for testing in the preview harness.
-window.RoadBite = { state, settings, onPosition, search, startSim, render };
+window.RoadBite = { state, settings, onPosition, search, startSim, render, renderQuickDest, sortResults };
