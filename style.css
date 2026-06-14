@@ -78,18 +78,35 @@ body {
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
 }
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
 .brand .logo {
   font-size: 20px; width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center;
   border-radius: 9px; background: var(--blue);
 }
-.brand .title { font-weight: 700; font-size: 21px; letter-spacing: -.02em; white-space: nowrap; }
+.brand .title {
+  font-weight: 700; font-size: 21px; letter-spacing: -.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.icon-btn {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 11px; border: 0;
+  background: var(--fill); color: var(--label); font-size: 21px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center; transition: .15s;
+}
+.icon-btn:active { opacity: .6; }
+.icon-btn.active { background: var(--blue); color: #fff; }
 
 .gps {
   display: flex; align-items: center; gap: 7px; flex: 0 0 auto;
   font-size: 15px; font-weight: 600;
   padding: 8px 13px; border-radius: 999px;
   background: var(--fill); color: var(--label-2);
+}
+/* On narrow screens (e.g. a folded cover display) shrink GPS to just the dot. */
+@media (max-width: 400px) {
+  #gps-text { display: none; }
+  .gps { padding: 10px; }
 }
 .gps .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--label-3); }
 .gps.on { color: var(--green); background: rgba(52,199,89,.15); }
@@ -104,7 +121,7 @@ body {
 
 /* ---------- Filters: category chips ---------- */
 #filters {
-  display: flex; align-items: flex-start; gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   padding: 4px 16px 12px;
   position: sticky; top: 56px; z-index: 5;
   background: var(--header-bg);
@@ -112,8 +129,10 @@ body {
   -webkit-backdrop-filter: saturate(180%) blur(20px);
 }
 .cats {
-  display: flex; flex-wrap: wrap; gap: 8px; flex: 1;
+  display: flex; flex-wrap: nowrap; gap: 8px; flex: 1; overflow-x: auto;
+  scrollbar-width: none; padding-bottom: 1px;
 }
+.cats::-webkit-scrollbar { display: none; }
 .cat-chip {
   flex: 0 0 auto; border: 0; background: var(--fill); color: var(--label);
   font-size: 17px; font-weight: 600; padding: 10px 15px; border-radius: 11px;
@@ -128,7 +147,6 @@ body {
   white-space: nowrap; transition: .15s; flex: 0 0 auto;
 }
 .chip:active { opacity: .6; }
-#settings-btn { color: var(--label-2); }
 
 /* ---------- Main ---------- */
 main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
@@ -157,7 +175,6 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 }
 #opennow-toggle { font-size: 15px; }
 #opennow-toggle.active { background: var(--green); color: #fff; }
-#map-toggle.active { background: var(--blue); color: #fff; }
 
 /* Quick destination chips (Home + favorites) */
 .quick {
@@ -203,6 +220,11 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 #results .row:nth-child(n+5){animation-delay:.14s}
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .row:active { background: var(--fill); }
+.row.hl { animation: rowflash 1.6s ease; }
+@keyframes rowflash {
+  0%, 100% { background: transparent; }
+  15%, 55% { background: rgba(10,132,255,.16); }
+}
 
 .cat-icon {
   width: 40px; height: 40px; border-radius: 9px; flex: 0 0 auto;

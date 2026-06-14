@@ -206,23 +206,94 @@ function updateMapMarkers() {
   if (!state.map || !window.google) return;
   (state.markers || []).forEach(m => m.setMap(null));
   state.markers = [];
+  state.markersById = {};
   const pin = (pos, color, scale, z, title) => new google.maps.Marker({
     position: pos, map: state.map, title, zIndex: z,
     icon: { path: google.maps.SymbolPath.CIRCLE, scale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
   });
-  for (const r of state.results) state.markers.push(pin(r.loc, KIND_COLORS[r.kind] || '#ff9500', 7, 1, r.name));
-  if (state.pos) {
-    state.markers.push(pin(state.pos, '#0a84ff', 6, 999, 'You'));
-    state.map.setCenter(state.pos);
+  for (const r of state.results) {
+    const m = pin(r.loc, KIND_COLORS[r.kind] || '#ff9500', 8, 1, r.name);
+    m.addListener('click', () => highlightRow(r.id));   // pin -> row
+    state.markers.push(m);
+    state.markersById[r.id] = m;
+  }
+  if (state.pos) state.markers.push(pin(state.pos, '#0a84ff', 6, 999, 'You'));
+}
+
+// Draw driving directions to the destination (falls back to a straight line if
+// the Directions API isn't enabled). Re-fits the view only when fit=true.
+async function drawRoute(fit) {
+  if (!state.map || !window.google) return;
+  if (state.dirRenderer) { state.dirRenderer.setMap(null); state.dirRenderer = null; }
+  if (state.routeLine) { state.routeLine.setMap(null); state.routeLine = null; }
+
+  if (!state.pos) return;
+  if (!state.destCoords) { if (fit) { state.map.setCenter(state.pos); state.map.setZoom(12); } return; }
+
+  try {
+    const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary('routes');
+    const res = await new DirectionsService().route({
+      origin: state.pos, destination: state.destCoords,
+      travelMode: google.maps.TravelMode.DRIVING,
+    });
+    state.dirRenderer = new DirectionsRenderer({
+      map: state.map, suppressMarkers: true, preserveViewport: !fit,
+      polylineOptions: { strokeColor: '#0a84ff', strokeWeight: 5, strokeOpacity: 0.85 },
+    });
+    state.dirRenderer.setDirections(res);
+  } catch (_) {
+    // Directions API unavailable — show a straight line.
+    state.routeLine = new google.maps.Polyline({
+      map: state.map, path: [state.pos, state.destCoords],
+      strokeColor: '#0a84ff', strokeWeight: 4, strokeOpacity: 0.6,
+    });
+    if (fit) {
+      const b = new google.maps.LatLngBounds();
+      b.extend(state.pos); b.extend(state.destCoords);
+      state.map.fitBounds(b, 60);
+    }
   }
 }
 
+// Redraw the route when the destination changes, or every ~10 mi of travel.
+function maybeDrawRoute() {
+  if (!state.map) return;
+  const sig = state.destCoords
+    ? `${state.destCoords.lat.toFixed(3)},${state.destCoords.lng.toFixed(3)}` : 'none';
+  const movedFar = !state.routeOrigin || (state.pos && haversineMi(state.routeOrigin, state.pos) > 10);
+  const newDest = sig !== state.routeSig;
+  if (newDest || movedFar) {
+    state.routeSig = sig;
+    state.routeOrigin = state.pos;
+    drawRoute(newDest);   // only re-fit the viewport for a brand-new destination
+  }
+}
+
+// row -> pin: bounce the marker and pan to it.
+function highlightPin(r) {
+  const m = state.markersById && state.markersById[r.id];
+  if (!state.map || !m) return;
+  state.map.panTo(r.loc);
+  m.setAnimation(google.maps.Animation.BOUNCE);
+  setTimeout(() => m.setAnimation(null), 1400);
+}
+
+// pin -> row: scroll the row into view and flash it.
+function highlightRow(id) {
+  const li = els.results.querySelector(`[data-id="${(window.CSS && CSS.escape) ? CSS.escape(id) : id}"]`);
+  if (!li) return;
+  li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  li.classList.add('hl');
+  setTimeout(() => li.classList.remove('hl'), 1600);
+}
+
 async function refreshMap() {
-  if (!settings.showMap || !settings.apiKey) return;
+  if (!settings.showMap || !effectiveKey()) return;
   try {
     await ensureMap();
-    google.maps.event.trigger(state.map, 'resize');
     updateMapMarkers();
+    state.routeSig = null;     // force a fresh fit when the map is (re)opened
+    maybeDrawRoute();
   } catch (_) { /* map is best-effort; the list still works */ }
 }
 
@@ -550,11 +621,13 @@ function render() {
         <button class="dirs" aria-label="Directions to ${escapeHtml(r.name)}">${SVG.nav}</button>
       </div>`;
 
-    li.querySelector('.dirs').addEventListener('click', () => navigateTo(r));
+    li.dataset.id = r.id;
+    li.querySelector('.dirs').addEventListener('click', (e) => { e.stopPropagation(); navigateTo(r); });
+    li.addEventListener('click', () => highlightPin(r));   // row -> pin
     els.results.appendChild(li);
   }
 
-  if (state.map) updateMapMarkers();
+  if (state.map) { updateMapMarkers(); maybeDrawRoute(); }
 }
 
 function showEmpty(msg, emoji) {
@@ -594,7 +667,6 @@ function onPosition(coords) {
 
   setGps('on', 'GPS live');
   updateHeadingBanner();
-  if (state.map) state.map.setCenter(pos);
 
   // Re-search when we first get a fix or have moved meaningfully (>1 mi).
   if (!state.lastSearchPos || haversineMi(state.lastSearchPos, pos) > 1) {
@@ -861,7 +933,7 @@ function init() {
     showEmpty('Google rejected the API key. Check the key and that this site’s domain is allowed in the key’s restrictions.', '⚠️');
 
   els.start.addEventListener('click', start);
-  $('#settings-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
+  $('#menu-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 

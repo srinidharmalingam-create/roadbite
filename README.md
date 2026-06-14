@@ -17,7 +17,9 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 - **Gas prices** on gas-station rows (from Google's `fuelOptions`, where reported) and **EV charger speed + plug count** on charging rows (Google does not expose EV pricing).
 - **Sort**: Best (rating + detour + distance), Closest (distance from you), or Cheapest (gas price first).
 - **Open now** toggle hides places that are currently closed.
-- **Map view** (🗺 in the top bar): a Google map above the list showing your location and the result pins, colored by category. Toggle it off to save data. Requires the API key; fails gracefully (the list always works even if the map can't load).
+- **Map view** (🗺 in the header): a Google map above the list that draws **driving directions to your destination** plus result pins colored by category. **Tap a pin** to flash its row; **tap a row** to bounce its pin. Toggle it off to save data; fails gracefully (the list always works even if the map can't load).
+  - Real road routing needs the **Directions API** enabled in Google Cloud (same project/key). If it's not enabled, the map falls back to a straight line to the destination — enable it for turn-by-turn route shapes.
+- **Settings** live behind the **☰ menu** in the header; the filter row holds only the category chips so they stay on one line (they scroll sideways on very narrow/folded screens).
 - Filters food & coffee by **minimum rating** (default 4.0★) and **minimum review count** (default 50). Gas and EV are ranked by **proximity** instead (ratings there are sparse).
 - Estimates **detour** as roughly 2× the perpendicular distance from your route line (off the road and back) and drops anything beyond your max-detour setting.
 - Shows each spot's **distance from you** and **city**, plus open/closed status.
