@@ -1,0 +1,437 @@
+/* RoadBite — suggests well-rated food & coffee ahead of you on a long drive.
+ * Pure client-side PWA. Uses the browser Geolocation API for position + heading
+ * and the Google Maps JS "places" library (Places API New) for ratings.
+ */
+
+'use strict';
+
+// ---------- Geometry helpers ----------
+const R_MI = 3958.8;            // Earth radius in miles
+const toRad = d => d * Math.PI / 180;
+const toDeg = r => r * 180 / Math.PI;
+
+function haversineMi(a, b) {
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R_MI * Math.asin(Math.sqrt(s));
+}
+
+// Initial bearing (degrees, 0=N) from a -> b
+function bearing(a, b) {
+  const dLng = toRad(b.lng - a.lng);
+  const y = Math.sin(dLng) * Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+// Smallest signed angle difference a-b in [-180,180]
+function angleDiff(a, b) {
+  let d = ((a - b + 540) % 360) - 180;
+  return d;
+}
+
+// Along-track and cross-track distance of point `p` relative to the line
+// starting at `origin` going along `headingDeg`. Returns miles (cross signed).
+function trackDistances(origin, p, headingDeg) {
+  const d13 = haversineMi(origin, p) / R_MI;     // angular distance
+  const t13 = toRad(bearing(origin, p));
+  const t12 = toRad(headingDeg);
+  const xt = Math.asin(Math.sin(d13) * Math.sin(t13 - t12));
+  const at = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xt))));
+  return { along: at * R_MI, cross: xt * R_MI };
+}
+
+const COMPASS = ['N','NE','E','SE','S','SW','W','NW'];
+const compass = deg => COMPASS[Math.round(((deg % 360) / 45)) % 8];
+
+// ---------- State ----------
+const state = {
+  pos: null,            // {lat,lng}
+  heading: null,        // degrees
+  speedMph: null,
+  lastSearchPos: null,
+  category: 'both',
+  starbucksOnly: false,
+  running: false,
+  watchId: null,
+  placesLib: null,
+  results: [],
+  prevPos: null,
+};
+
+const settings = {
+  apiKey: '',
+  minRating: 4.0,
+  minReviews: 50,
+  maxDetour: 5,     // miles off route
+  lookAhead: 25,    // miles forward
+  aheadOnly: true,
+};
+
+// ---------- Persistence ----------
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('roadbite') || '{}');
+    Object.assign(settings, s);
+  } catch (_) {}
+}
+function saveSettings() {
+  localStorage.setItem('roadbite', JSON.stringify(settings));
+}
+
+// ---------- DOM ----------
+const $ = sel => document.querySelector(sel);
+const els = {
+  gps: $('#gps'), gpsText: $('#gps-text'),
+  results: $('#results'), empty: $('#empty'),
+  start: $('#start-btn'),
+  headingBanner: $('#heading-banner'), headingDir: $('#heading-dir'), speed: $('#speed'),
+  settings: $('#settings'),
+};
+
+// ---------- Google Places loader ----------
+function loadGoogle(key) {
+  return new Promise((resolve, reject) => {
+    if (window.google?.maps?.importLibrary) return resolve();
+    window.gm_authFailure = () => reject(new Error('API key rejected by Google'));
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&v=weekly&loading=async`;
+    s.async = true;
+    s.onerror = () => reject(new Error('Failed to load Google Maps script'));
+    s.onload = () => resolve();
+    document.head.appendChild(s);
+  });
+}
+
+async function ensurePlaces() {
+  if (state.placesLib) return state.placesLib;
+  if (!settings.apiKey) throw new Error('NO_KEY');
+  await loadGoogle(settings.apiKey);
+  state.placesLib = await google.maps.importLibrary('places');
+  return state.placesLib;
+}
+
+// ---------- Search ----------
+async function search() {
+  if (!state.pos) return;
+  let lib;
+  try {
+    lib = await ensurePlaces();
+  } catch (e) {
+    if (e.message === 'NO_KEY') showEmpty('Add your Google Places API key in ⚙︎ Settings to see suggestions.');
+    else showEmpty('Google Places error: ' + e.message);
+    return;
+  }
+  const { Place, SearchNearbyRankPreference } = lib;
+
+  const wantFood = state.category !== 'coffee';
+  const wantCoffee = state.category !== 'food';
+  const includedTypes = [];
+  if (wantFood) includedTypes.push('restaurant');
+  if (wantCoffee) includedTypes.push('coffee_shop', 'cafe');
+
+  // Google caps nearby radius at 50km (~31mi). Use look-ahead, capped.
+  const radiusMeters = Math.min(settings.lookAhead, 31) * 1609.34;
+
+  const request = {
+    fields: ['displayName', 'location', 'rating', 'userRatingCount',
+             'businessStatus', 'regularOpeningHours', 'primaryType', 'id'],
+    locationRestriction: { center: { lat: state.pos.lat, lng: state.pos.lng }, radius: radiusMeters },
+    includedTypes,
+    maxResultCount: 20,
+    rankPreference: SearchNearbyRankPreference.DISTANCE,
+  };
+
+  let places;
+  try {
+    ({ places } = await Place.searchNearby(request));
+  } catch (e) {
+    showEmpty('Search failed: ' + e.message);
+    return;
+  }
+
+  state.results = places.map(rankPlace).filter(Boolean);
+  state.results.sort((a, b) => a.score - b.score);
+  render();
+}
+
+function rankPlace(p) {
+  const loc = { lat: p.location.lat(), lng: p.location.lng() };
+  const rating = p.rating || 0;
+  const reviews = p.userRatingCount || 0;
+
+  if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') return null;
+  if (rating < settings.minRating) return null;
+  if (reviews < settings.minReviews) return null;
+
+  const isCoffee = (p.primaryType || '').includes('cafe') ||
+    (p.primaryType || '').includes('coffee') ||
+    /coffee|cafe|starbucks|dunkin/i.test(p.displayName);
+
+  if (state.starbucksOnly && !/starbucks/i.test(p.displayName)) return null;
+
+  const heading = state.heading;
+  let along = haversineMi(state.pos, loc), cross = 0, ahead = true;
+  if (heading != null) {
+    const t = trackDistances(state.pos, loc, heading);
+    along = t.along; cross = Math.abs(t.cross);
+    ahead = angleDiff(bearing(state.pos, loc), heading) <= 90 &&
+            angleDiff(bearing(state.pos, loc), heading) >= -90;
+  }
+
+  if (heading != null) {
+    if (settings.aheadOnly && !ahead) return null;
+    if (cross > settings.maxDetour) return null;
+    if (along > settings.lookAhead) return null;
+  } else {
+    if (along > settings.lookAhead) return null;
+  }
+
+  const detour = heading != null ? cross * 2 : null;  // off-route and back
+  const straight = haversineMi(state.pos, loc);
+
+  // Score: lower is better. Reward rating, penalize detour & distance.
+  const ratingPenalty = (5 - rating) * 4;
+  const detourPenalty = (detour ?? straight) * 3;
+  const distPenalty = along * 0.4;
+  const score = ratingPenalty + detourPenalty + distPenalty;
+
+  let openNow = null;
+  try { openNow = p.regularOpeningHours?.isOpen?.() ?? null; } catch (_) {}
+
+  return {
+    id: p.id, name: p.displayName, loc, rating, reviews,
+    isCoffee, along, detour, straight, openNow, score,
+  };
+}
+
+// ---------- Render ----------
+function fmtMi(mi) {
+  if (mi == null) return '—';
+  if (mi < 0.1) return '<0.1 mi';
+  return (mi < 10 ? mi.toFixed(1) : Math.round(mi)) + ' mi';
+}
+
+function fmtCount(n) {
+  if (n >= 1000) return (n / 1000).toFixed(n < 10000 ? 1 : 0).replace('.0', '') + 'k';
+  return String(n);
+}
+
+function render() {
+  els.results.innerHTML = '';
+  if (!state.results.length) {
+    showEmpty('No matching spots ahead yet. Loosen filters in ⚙︎ or keep driving.');
+    return;
+  }
+  els.empty.classList.add('hidden');
+
+  for (const r of state.results) {
+    const li = document.createElement('li');
+    li.className = 'card' + (r.isCoffee ? ' coffee' : '');
+
+    const detourTxt = r.detour != null
+      ? `<span class="pill detour">↪ +${fmtMi(r.detour)}</span>`
+      : '';
+    const openTxt = r.openNow == null ? ''
+      : `<span class="pill open ${r.openNow ? '' : 'closed'}">${r.openNow ? '● Open' : '● Closed'}</span>`;
+
+    li.innerHTML = `
+      <div class="icon">${r.isCoffee ? '☕' : '🍔'}</div>
+      <div class="body">
+        <p class="name">${escapeHtml(r.name)}</p>
+        <div class="meta">
+          <span class="pill rating">★ ${r.rating.toFixed(1)} <span class="count">${fmtCount(r.reviews)}</span></span>
+          ${detourTxt}
+          ${openTxt}
+        </div>
+      </div>
+      <button class="go" aria-label="Navigate to ${escapeHtml(r.name)}">
+        <span class="arrow">➔</span><span class="dist">${fmtMi(r.along)}</span>
+      </button>`;
+
+    li.querySelector('.go').addEventListener('click', () => navigateTo(r));
+    els.results.appendChild(li);
+  }
+}
+
+function showEmpty(msg, emoji) {
+  els.results.innerHTML = '';
+  els.empty.innerHTML = (emoji ? `<span class="big">${emoji}</span>` : '') + escapeHtml(msg);
+  els.empty.classList.remove('hidden');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function navigateTo(r) {
+  const isApple = /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+  const q = `${r.loc.lat},${r.loc.lng}`;
+  const url = isApple
+    ? `https://maps.apple.com/?daddr=${q}&dirflg=d`
+    : `https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving`;
+  window.open(url, '_blank');
+}
+
+// ---------- Position handling ----------
+function onPosition(coords) {
+  const pos = { lat: coords.latitude, lng: coords.longitude };
+
+  // Heading: prefer GPS course; fall back to bearing between fixes.
+  let heading = (coords.heading != null && !Number.isNaN(coords.heading)) ? coords.heading : null;
+  if (heading == null && state.prevPos && haversineMi(state.prevPos, pos) > 0.02) {
+    heading = bearing(state.prevPos, pos);
+  }
+  if (heading != null) state.heading = heading;
+
+  state.speedMph = coords.speed != null && !Number.isNaN(coords.speed) ? coords.speed * 2.237 : null;
+  state.prevPos = state.pos;
+  state.pos = pos;
+
+  setGps('on', 'GPS live');
+  updateHeadingBanner();
+
+  // Re-search when we first get a fix or have moved meaningfully (>1 mi).
+  if (!state.lastSearchPos || haversineMi(state.lastSearchPos, pos) > 1) {
+    state.lastSearchPos = pos;
+    search();
+  }
+}
+
+function updateHeadingBanner() {
+  if (state.heading == null) { els.headingBanner.classList.add('hidden'); return; }
+  els.headingBanner.classList.remove('hidden');
+  els.headingBanner.innerHTML =
+    `🧭 Heading <b id="heading-dir">${compass(state.heading)} (${Math.round(state.heading)}°)</b>` +
+    ` <span class="sep">·</span> <span id="speed">${state.speedMph != null ? Math.round(state.speedMph) + ' mph' : 'parked'}</span>`;
+}
+
+function setGps(cls, text) {
+  els.gps.className = 'gps ' + cls;
+  els.gpsText.textContent = text;
+}
+
+function start() {
+  if (state.running) return stop();
+  if (!('geolocation' in navigator)) { setGps('error', 'No GPS'); return; }
+  state.running = true;
+  els.start.textContent = 'Stop';
+  els.start.classList.add('running');
+  setGps('on', 'Locating…');
+  state.watchId = navigator.geolocation.watchPosition(
+    p => onPosition(p.coords),
+    err => setGps('error', err.code === 1 ? 'Location denied' : 'GPS error'),
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+  );
+}
+
+function stop() {
+  state.running = false;
+  els.start.textContent = 'Start driving';
+  els.start.classList.remove('running');
+  if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
+  if (state.simTimer) { clearInterval(state.simTimer); state.simTimer = null; }
+  setGps('off', 'GPS off');
+}
+
+// ---------- Simulation (testing without moving) ----------
+function startSim() {
+  stop();
+  state.running = true;
+  els.start.textContent = 'Stop';
+  els.start.classList.add('running');
+  // Coarse Philly -> Lewiston ME waypoints (I-95 corridor).
+  const route = [
+    { lat: 39.9526, lng: -75.1652 }, // Philadelphia
+    { lat: 40.2206, lng: -74.7597 }, // Trenton
+    { lat: 40.7357, lng: -74.1724 }, // Newark
+    { lat: 41.0534, lng: -73.5387 }, // Stamford
+    { lat: 41.3083, lng: -72.9279 }, // New Haven
+    { lat: 41.7658, lng: -72.6734 }, // Hartford
+    { lat: 42.1015, lng: -72.5898 }, // Springfield
+    { lat: 42.3601, lng: -71.0589 }, // Boston
+    { lat: 42.9956, lng: -70.9662 }, // Portsmouth NH
+    { lat: 43.6591, lng: -70.2568 }, // Portland ME
+    { lat: 44.1004, lng: -70.2148 }, // Lewiston ME
+  ];
+  let i = 0, f = 0;
+  setGps('on', 'SIM driving');
+  const tick = () => {
+    const a = route[i], b = route[Math.min(i + 1, route.length - 1)];
+    const lat = a.lat + (b.lat - a.lat) * f;
+    const lng = a.lng + (b.lng - a.lng) * f;
+    onPosition({ latitude: lat, longitude: lng, heading: bearing(a, b), speed: 29 }); // ~65mph
+    f += 0.34;
+    if (f >= 1) { f = 0; i++; }
+    if (i >= route.length - 1) { clearInterval(state.simTimer); state.simTimer = null; }
+  };
+  tick();
+  state.simTimer = setInterval(tick, 4000);
+}
+
+// ---------- Settings UI ----------
+function bindSettings() {
+  const map = [
+    ['#api-key', 'apiKey', 'value', v => v.trim()],
+    ['#rating', 'minRating', 'value', parseFloat, '#rating-val', v => v.toFixed(1)],
+    ['#reviews', 'minReviews', 'value', v => parseInt(v, 10), '#reviews-val'],
+    ['#detour', 'maxDetour', 'value', parseFloat, '#detour-val'],
+    ['#ahead', 'lookAhead', 'value', parseFloat, '#ahead-val'],
+    ['#ahead-only', 'aheadOnly', 'checked', v => v],
+  ];
+  for (const [sel, key, prop, parse, labelSel, fmt] of map) {
+    const el = $(sel);
+    el[prop] = settings[key];
+    if (labelSel) $(labelSel).textContent = (fmt || String)(settings[key]);
+    el.addEventListener('input', () => {
+      settings[key] = parse(el[prop]);
+      if (labelSel) $(labelSel).textContent = (fmt || String)(settings[key]);
+      saveSettings();
+    });
+  }
+  // Re-run search when filters that affect ranking change & we have a fix.
+  ['#rating', '#reviews', '#detour', '#ahead', '#ahead-only'].forEach(sel =>
+    $(sel).addEventListener('change', () => state.pos && search()));
+
+  $('#api-key').addEventListener('change', () => {
+    state.placesLib = null; // force reload with new key
+    if (state.pos) search();
+  });
+}
+
+// ---------- Wire up ----------
+function init() {
+  loadSettings();
+  bindSettings();
+
+  document.querySelectorAll('#cat-seg .seg-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#cat-seg .seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.category = btn.dataset.cat;
+      if (state.pos) search();
+    }));
+
+  $('#starbucks-toggle').addEventListener('click', () => {
+    state.starbucksOnly = !state.starbucksOnly;
+    $('#starbucks-toggle').classList.toggle('active', state.starbucksOnly);
+    if (state.pos) search();
+  });
+
+  els.start.addEventListener('click', start);
+  $('#settings-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
+  $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
+  $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
+
+  if (!settings.apiKey) showEmpty('Welcome to RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
+  else showEmpty('Tap "Start driving" to find well-rated food & coffee ahead of you.', '🍔☕');
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+// Expose a few internals for testing in the preview harness.
+window.RoadBite = { state, settings, onPosition, search, startSim, render };

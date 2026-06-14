@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RoadBite" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="stylesheet" href="style.css" />
+  <title>RoadBite — eats & coffee ahead</title>
+</head>
+<body>
+  <header id="status-bar">
+    <div class="brand">
+      <span class="logo">🚗</span>
+      <span class="title">RoadBite</span>
+    </div>
+    <div id="gps" class="gps off">
+      <span class="dot"></span>
+      <span id="gps-text">GPS off</span>
+    </div>
+  </header>
+
+  <nav id="filters">
+    <div class="seg" id="cat-seg">
+      <button class="seg-btn active" data-cat="both">Both</button>
+      <button class="seg-btn" data-cat="food">🍔 Food</button>
+      <button class="seg-btn" data-cat="coffee">☕ Coffee</button>
+    </div>
+    <button id="starbucks-toggle" class="chip">Starbucks only</button>
+    <button id="settings-btn" class="chip">⚙︎</button>
+  </nav>
+
+  <main>
+    <div id="heading-banner" class="hidden">
+      Heading <b id="heading-dir">—</b> · <span id="speed">—</span>
+    </div>
+    <ul id="results"></ul>
+    <div id="empty" class="empty hidden"></div>
+  </main>
+
+  <button id="start-btn" class="primary">Start driving</button>
+
+  <!-- Settings sheet -->
+  <div id="settings" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>Settings</h2>
+
+      <label class="field">
+        <span>Google Places API key</span>
+        <input id="api-key" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+        <small>Stored only on this device. Needs Maps JavaScript API + Places API (New) enabled.</small>
+      </label>
+
+      <label class="field">
+        <span>Minimum rating: <b id="rating-val">4.0</b>★</span>
+        <input id="rating" type="range" min="0" max="5" step="0.1" value="4.0" />
+      </label>
+
+      <label class="field">
+        <span>Minimum reviews: <b id="reviews-val">50</b></span>
+        <input id="reviews" type="range" min="0" max="500" step="10" value="50" />
+      </label>
+
+      <label class="field">
+        <span>Max detour off route: <b id="detour-val">5</b> mi</span>
+        <input id="detour" type="range" min="0.5" max="20" step="0.5" value="5" />
+      </label>
+
+      <label class="field">
+        <span>Look-ahead distance: <b id="ahead-val">25</b> mi</span>
+        <input id="ahead" type="range" min="2" max="50" step="1" value="25" />
+      </label>
+
+      <label class="field row">
+        <input id="ahead-only" type="checkbox" checked />
+        <span>Only show places ahead of me</span>
+      </label>
+
+      <hr />
+      <details>
+        <summary>Simulate driving (testing)</summary>
+        <p class="muted">Run a mock Philly→Lewiston drive without moving. Useful to try the app at your desk.</p>
+        <button id="sim-btn" class="chip">▶ Start simulation</button>
+      </details>
+
+      <button id="settings-done" class="primary">Done</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
