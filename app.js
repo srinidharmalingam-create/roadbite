@@ -46,23 +46,49 @@ function trackDistances(origin, p, headingDeg) {
 const COMPASS = ['N','NE','E','SE','S','SW','W','NW'];
 const compass = deg => COMPASS[Math.round(((deg % 360) / 45)) % 8];
 
+// What Google Places type(s) each category maps to.
+const CATEGORY_TYPES = {
+  food: ['restaurant'],            // replaced by chosen cuisines when any are selected
+  coffee: ['coffee_shop', 'cafe'],
+  gas: ['gas_station'],
+  ev: ['electric_vehicle_charging_station'],
+};
+
+// Cuisine chips (values are Google Places primary types).
+const CUISINES = [
+  ['american_restaurant', 'American'], ['italian_restaurant', 'Italian'],
+  ['mexican_restaurant', 'Mexican'], ['chinese_restaurant', 'Chinese'],
+  ['japanese_restaurant', 'Japanese'], ['sushi_restaurant', 'Sushi'],
+  ['thai_restaurant', 'Thai'], ['indian_restaurant', 'Indian'],
+  ['pizza_restaurant', 'Pizza'], ['hamburger_restaurant', 'Burgers'],
+  ['seafood_restaurant', 'Seafood'], ['steak_house', 'Steakhouse'],
+  ['barbecue_restaurant', 'BBQ'], ['mediterranean_restaurant', 'Mediterranean'],
+  ['breakfast_restaurant', 'Breakfast'], ['vegetarian_restaurant', 'Vegetarian'],
+  ['fast_food_restaurant', 'Fast food'], ['sandwich_shop', 'Sandwiches'],
+];
+
 // ---------- State ----------
 const state = {
   pos: null,            // {lat,lng}
-  heading: null,        // degrees
+  heading: null,        // degrees (live GPS)
   speedMph: null,
   lastSearchPos: null,
-  category: 'both',
-  starbucksOnly: false,
   running: false,
   watchId: null,
   placesLib: null,
   results: [],
   prevPos: null,
+  destCoords: null,     // {lat,lng} resolved destination
+  destName: '',
+  destResolvedFor: '',  // the query string destCoords was resolved from
 };
 
 const settings = {
   apiKey: '',
+  categories: ['food', 'coffee'],
+  cuisines: [],         // selected cuisine type keys
+  destination: '',
+  starbucksOnly: false,
   minRating: 4.0,
   minReviews: 50,
   maxDetour: 5,     // miles off route
@@ -87,9 +113,15 @@ const els = {
   gps: $('#gps'), gpsText: $('#gps-text'),
   results: $('#results'), empty: $('#empty'),
   start: $('#start-btn'),
-  headingBanner: $('#heading-banner'), headingDir: $('#heading-dir'), speed: $('#speed'),
+  headingBanner: $('#heading-banner'),
   settings: $('#settings'),
 };
+
+// Effective travel direction: toward the chosen destination, else live GPS heading.
+function effectiveHeading() {
+  if (state.destCoords && state.pos) return bearing(state.pos, state.destCoords);
+  return state.heading;
+}
 
 // ---------- Google Places loader ----------
 function loadGoogle(key) {
@@ -126,66 +158,115 @@ async function search() {
   }
   const { Place, SearchNearbyRankPreference } = lib;
 
-  const wantFood = state.category !== 'coffee';
-  const wantCoffee = state.category !== 'food';
-  const includedTypes = [];
-  if (wantFood) includedTypes.push('restaurant');
-  if (wantCoffee) includedTypes.push('coffee_shop', 'cafe');
+  await resolveDestination(lib);
+
+  const cats = settings.categories;
+  if (!cats.length) { showEmpty('Pick at least one category above (Food, Coffee, Gas, EV).', '🧭'); return; }
 
   // Google caps nearby radius at 50km (~31mi). Use look-ahead, capped.
   const radiusMeters = Math.min(settings.lookAhead, 31) * 1609.34;
+  const center = { lat: state.pos.lat, lng: state.pos.lng };
+  const fields = ['displayName', 'location', 'rating', 'userRatingCount',
+                  'businessStatus', 'regularOpeningHours', 'primaryType',
+                  'primaryTypeDisplayName', 'addressComponents', 'id'];
 
-  const request = {
-    fields: ['displayName', 'location', 'rating', 'userRatingCount',
-             'businessStatus', 'regularOpeningHours', 'primaryType',
-             'primaryTypeDisplayName', 'addressComponents', 'id'],
-    locationRestriction: { center: { lat: state.pos.lat, lng: state.pos.lng }, radius: radiusMeters },
-    includedTypes,
-    maxResultCount: 20,
-    rankPreference: SearchNearbyRankPreference.DISTANCE,
-  };
+  // One search per selected category so each is well represented in the results.
+  const tasks = cats.map(cat => {
+    const includedTypes = (cat === 'food' && settings.cuisines.length)
+      ? settings.cuisines.slice()
+      : CATEGORY_TYPES[cat];
+    return Place.searchNearby({
+      fields, locationRestriction: { center, radius: radiusMeters }, includedTypes,
+      maxResultCount: 20, rankPreference: SearchNearbyRankPreference.DISTANCE,
+    }).then(r => r.places || []).catch(() => []);
+  });
 
-  let places;
+  let groups;
   try {
-    ({ places } = await Place.searchNearby(request));
+    groups = await Promise.all(tasks);
   } catch (e) {
     showEmpty('Search failed: ' + e.message);
     return;
   }
 
-  state.results = places.map(rankPlace).filter(Boolean);
-  state.results.sort((a, b) => a.score - b.score);
+  // Merge + de-dupe across categories.
+  const seen = new Set(), merged = [];
+  for (const g of groups) for (const p of g) {
+    if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
+  }
+
+  state.results = merged.map(rankPlace).filter(Boolean)
+    .sort((a, b) => a.score - b.score).slice(0, 40);
   render();
+}
+
+// Resolve the destination text into coordinates (only when it changes).
+async function resolveDestination(lib) {
+  const q = (settings.destination || '').trim();
+  if (!q) { state.destCoords = null; state.destName = ''; state.destResolvedFor = ''; setDestStatus(''); return; }
+  if (state.destResolvedFor === q && state.destCoords) return;
+  try {
+    const { places } = await lib.Place.searchByText({
+      textQuery: q, fields: ['location', 'displayName', 'formattedAddress'], maxResultCount: 1,
+    });
+    if (places && places[0]) {
+      state.destCoords = { lat: places[0].location.lat(), lng: places[0].location.lng() };
+      state.destName = places[0].displayName || q;
+      state.destResolvedFor = q;
+      setDestStatus('✓ ' + state.destName);
+    } else {
+      state.destCoords = null; state.destName = ''; setDestStatus('· not found');
+    }
+  } catch (_) {
+    state.destCoords = null; state.destName = ''; setDestStatus('· lookup failed');
+  }
+}
+
+function setDestStatus(text) {
+  const el = document.getElementById('dest-status');
+  if (el) el.textContent = text;
+}
+
+function placeKind(p) {
+  const t = p.primaryType || '';
+  if (t === 'gas_station') return 'gas';
+  if (t === 'electric_vehicle_charging_station') return 'ev';
+  if (/coffee|cafe/.test(t) || /coffee|cafe|starbucks|dunkin/i.test(p.displayName)) return 'coffee';
+  return 'food';
 }
 
 function rankPlace(p) {
   const loc = { lat: p.location.lat(), lng: p.location.lng() };
   const rating = p.rating || 0;
   const reviews = p.userRatingCount || 0;
+  const kind = placeKind(p);
+  const ratedKind = kind === 'food' || kind === 'coffee';
 
   if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') return null;
-  if (rating < settings.minRating) return null;
-  if (reviews < settings.minReviews) return null;
+  // Rating/review thresholds apply to food & coffee only; gas/EV rank on proximity.
+  if (ratedKind && rating < settings.minRating) return null;
+  if (ratedKind && reviews < settings.minReviews) return null;
 
-  const isCoffee = (p.primaryType || '').includes('cafe') ||
-    (p.primaryType || '').includes('coffee') ||
-    /coffee|cafe|starbucks|dunkin/i.test(p.displayName);
+  if (state.starbucksOnly && kind === 'coffee' && !/starbucks/i.test(p.displayName)) return null;
 
-  if (state.starbucksOnly && !/starbucks/i.test(p.displayName)) return null;
-
-  const heading = state.heading;
+  const heading = effectiveHeading();
   let along = haversineMi(state.pos, loc), cross = 0, ahead = true;
   if (heading != null) {
     const t = trackDistances(state.pos, loc, heading);
     along = t.along; cross = Math.abs(t.cross);
-    ahead = angleDiff(bearing(state.pos, loc), heading) <= 90 &&
-            angleDiff(bearing(state.pos, loc), heading) >= -90;
+    const ad = angleDiff(bearing(state.pos, loc), heading);
+    ahead = ad <= 90 && ad >= -90;
   }
 
   if (heading != null) {
     if (settings.aheadOnly && !ahead) return null;
     if (cross > settings.maxDetour) return null;
     if (along > settings.lookAhead) return null;
+    // Don't suggest stops well beyond the destination.
+    if (state.destCoords) {
+      const distDest = haversineMi(state.pos, state.destCoords);
+      if (along > distDest + 5) return null;
+    }
   } else {
     if (along > settings.lookAhead) return null;
   }
@@ -193,8 +274,8 @@ function rankPlace(p) {
   const detour = heading != null ? cross * 2 : null;  // off-route and back
   const straight = haversineMi(state.pos, loc);
 
-  // Score: lower is better. Reward rating, penalize detour & distance.
-  const ratingPenalty = (5 - rating) * 4;
+  // Score: lower is better. Reward rating (food/coffee), penalize detour & distance.
+  const ratingPenalty = ratedKind ? (5 - rating) * 4 : 6;
   const detourPenalty = (detour ?? straight) * 3;
   const distPenalty = along * 0.4;
   const score = ratingPenalty + detourPenalty + distPenalty;
@@ -203,10 +284,10 @@ function rankPlace(p) {
   try { openNow = p.regularOpeningHours?.isOpen?.() ?? null; } catch (_) {}
 
   return {
-    id: p.id, name: p.displayName, loc, rating, reviews,
-    isCoffee, along, detour, straight, openNow, score,
+    id: p.id, name: p.displayName, loc, rating, reviews, kind,
+    isCoffee: kind === 'coffee', along, detour, straight, openNow, score,
     city: extractCity(p.addressComponents),
-    typeLabel: humanizeType(p),
+    typeLabel: humanizeType(p, kind),
   };
 }
 
@@ -223,12 +304,14 @@ function extractCity(components) {
 }
 
 // Friendly category label, e.g. "pizza_restaurant" -> "Pizza".
-function humanizeType(p) {
+function humanizeType(p, kind) {
+  if (kind === 'gas') return 'Gas station';
+  if (kind === 'ev') return 'EV charging';
   if (p.primaryTypeDisplayName) {
     return (p.primaryTypeDisplayName.text || p.primaryTypeDisplayName);
   }
   const t = p.primaryType || '';
-  if (!t) return '';
+  if (!t) return kind === 'coffee' ? 'Coffee' : 'Restaurant';
   return t.replace(/_/g, ' ')
     .replace(/\brestaurant\b/i, '')
     .replace(/\bshop\b/i, '')
@@ -240,6 +323,8 @@ function humanizeType(p) {
 const SVG = {
   food: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.1 2a.7.7 0 0 0-.7.7v4.9c0 .6-.3 1-.8 1.1V2.7a.7.7 0 0 0-1.4 0v6c-.5-.1-.8-.5-.8-1.1V2.7a.7.7 0 0 0-1.4 0v4.9c0 1.4.8 2.4 2.2 2.6V21a.9.9 0 0 0 1.8 0v-10.8c1.4-.2 2.2-1.2 2.2-2.6V2.7A.7.7 0 0 0 8.1 2zM15.5 2c-1.4 0-2.5 2.2-2.5 5.2 0 2.3.8 3.8 2 4.3V21a.9.9 0 0 0 1.8 0V2.9c0-.5-.4-.9-1.3-.9z"/></svg>',
   coffee: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h13v7.5A4.5 4.5 0 0 1 12.5 16h-4A4.5 4.5 0 0 1 4 11.5V4zm13 1.8h1.3a2.1 2.1 0 0 1 0 4.2H17V5.8zM4.5 19h12a.9.9 0 0 1 0 1.8h-12a.9.9 0 0 1 0-1.8z"/></svg>',
+  gas: '<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M3.5 3.2c0-.7.6-1.2 1.2-1.2h6c.7 0 1.2.5 1.2 1.2V21H3.5V3.2zM5.4 4.6h5.2v3.4H5.4V4.6z"/><path d="M13 6.2l2.6 2.6c.3.3.4.6.4 1v7.3a1.4 1.4 0 0 0 2.8 0V11h-1.3c-.5 0-.9-.4-.9-.9V7.6L15.1 6 13 6.2z"/><path d="M3 21.1h10a.9.9 0 0 1 0 1.8H3a.9.9 0 0 1 0-1.8z"/></svg>',
+  ev: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2L4.5 13.4c-.4.5 0 1.3.6 1.3h5L9 21.3c-.1.8.9 1.2 1.4.6l8.6-11.4c.4-.5 0-1.3-.6-1.3h-5l1-6.5c.1-.8-.9-1.2-1.4-.6z"/></svg>',
   nav: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.6 3.4a1 1 0 0 0-1.1-.2L4 9.6c-1 .4-.9 1.8.1 2.1l6.3 1.9 1.9 6.3c.3 1 1.7 1.1 2.1.1l6.4-15.5a1 1 0 0 0-.2-1.1z"/></svg>',
 };
 
@@ -264,11 +349,14 @@ function render() {
 
   for (const r of state.results) {
     const li = document.createElement('li');
-    li.className = 'row' + (r.isCoffee ? ' coffee' : ' food');
+    li.className = 'row ' + r.kind;
 
-    // line 2: rating · category · city
+    // line 2: rating (if any) · category · city
+    const ratingPart = r.rating > 0
+      ? `<span class="stars">★ ${r.rating.toFixed(1)}</span> <span class="count">(${fmtCount(r.reviews)})</span>`
+      : '';
     const sub = [
-      `<span class="stars">★ ${r.rating.toFixed(1)}</span> <span class="count">(${fmtCount(r.reviews)})</span>`,
+      ratingPart,
       r.typeLabel && escapeHtml(r.typeLabel),
       r.city && escapeHtml(r.city),
     ].filter(Boolean).join('<span class="mid">·</span>');
@@ -280,7 +368,7 @@ function render() {
     const line3 = [openTxt, detourTxt].filter(Boolean).join('<span class="mid">·</span>');
 
     li.innerHTML = `
-      <div class="cat-icon">${r.isCoffee ? SVG.coffee : SVG.food}</div>
+      <div class="cat-icon">${SVG[r.kind] || SVG.food}</div>
       <div class="info">
         <div class="title">${escapeHtml(r.name)}</div>
         <div class="sub">${sub}</div>
@@ -341,11 +429,21 @@ function onPosition(coords) {
 }
 
 function updateHeadingBanner() {
+  // With a destination set, show it + remaining distance; else show live heading.
+  if (state.destCoords && state.pos) {
+    const dist = haversineMi(state.pos, state.destCoords);
+    els.headingBanner.classList.remove('hidden');
+    els.headingBanner.innerHTML =
+      `📍 To <b>${escapeHtml(state.destName || 'destination')}</b>` +
+      ` <span class="sep">·</span> ${fmtMi(dist)} away` +
+      (state.speedMph != null ? ` <span class="sep">·</span> ${Math.round(state.speedMph)} mph` : '');
+    return;
+  }
   if (state.heading == null) { els.headingBanner.classList.add('hidden'); return; }
   els.headingBanner.classList.remove('hidden');
   els.headingBanner.innerHTML =
-    `🧭 Heading <b id="heading-dir">${compass(state.heading)} (${Math.round(state.heading)}°)</b>` +
-    ` <span class="sep">·</span> <span id="speed">${state.speedMph != null ? Math.round(state.speedMph) + ' mph' : 'parked'}</span>`;
+    `🧭 Heading <b>${compass(state.heading)} (${Math.round(state.heading)}°)</b>` +
+    ` <span class="sep">·</span> ${state.speedMph != null ? Math.round(state.speedMph) + ' mph' : 'parked'}`;
 }
 
 function setGps(cls, text) {
@@ -420,6 +518,7 @@ function bindSettings() {
     ['#detour', 'maxDetour', 'value', parseFloat, '#detour-val'],
     ['#ahead', 'lookAhead', 'value', parseFloat, '#ahead-val'],
     ['#ahead-only', 'aheadOnly', 'checked', v => v],
+    ['#starbucks-only', 'starbucksOnly', 'checked', v => v],
   ];
   for (const [sel, key, prop, parse, labelSel, fmt] of map) {
     const el = $(sel);
@@ -432,12 +531,58 @@ function bindSettings() {
     });
   }
   // Re-run search when filters that affect ranking change & we have a fix.
-  ['#rating', '#reviews', '#detour', '#ahead', '#ahead-only'].forEach(sel =>
+  ['#rating', '#reviews', '#detour', '#ahead', '#ahead-only', '#starbucks-only'].forEach(sel =>
     $(sel).addEventListener('change', () => state.pos && search()));
 
   $('#api-key').addEventListener('change', () => {
     state.placesLib = null; // force reload with new key
     if (state.pos) search();
+  });
+
+  // Destination
+  const dest = $('#dest');
+  dest.value = settings.destination;
+  if (settings.destination) setDestStatus('…');
+  dest.addEventListener('change', () => {
+    settings.destination = dest.value.trim();
+    state.destResolvedFor = '';   // force re-resolve
+    saveSettings();
+    if (state.pos) search(); else updateHeadingBanner();
+  });
+
+  buildCuisineChips();
+}
+
+function buildCuisineChips() {
+  const wrap = $('#cuisine-list');
+  wrap.innerHTML = '';
+  for (const [type, label] of CUISINES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cuisine-chip' + (settings.cuisines.includes(type) ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      const i = settings.cuisines.indexOf(type);
+      if (i >= 0) settings.cuisines.splice(i, 1); else settings.cuisines.push(type);
+      btn.classList.toggle('active');
+      saveSettings();
+      if (state.pos && settings.categories.includes('food')) search();
+    });
+    wrap.appendChild(btn);
+  }
+}
+
+function setupCategories() {
+  document.querySelectorAll('#cat-list .cat-chip').forEach(btn => {
+    const cat = btn.dataset.cat;
+    btn.classList.toggle('active', settings.categories.includes(cat));
+    btn.addEventListener('click', () => {
+      const i = settings.categories.indexOf(cat);
+      if (i >= 0) settings.categories.splice(i, 1); else settings.categories.push(cat);
+      btn.classList.toggle('active', settings.categories.includes(cat));
+      saveSettings();
+      if (state.pos) search();
+    });
   });
 }
 
@@ -445,20 +590,7 @@ function bindSettings() {
 function init() {
   loadSettings();
   bindSettings();
-
-  document.querySelectorAll('#cat-seg .seg-btn').forEach(btn =>
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#cat-seg .seg-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.category = btn.dataset.cat;
-      if (state.pos) search();
-    }));
-
-  $('#starbucks-toggle').addEventListener('click', () => {
-    state.starbucksOnly = !state.starbucksOnly;
-    $('#starbucks-toggle').classList.toggle('active', state.starbucksOnly);
-    if (state.pos) search();
-  });
+  setupCategories();
 
   els.start.addEventListener('click', start);
   $('#settings-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
@@ -466,7 +598,7 @@ function init() {
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 
   if (!settings.apiKey) showEmpty('Welcome to RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
-  else showEmpty('Tap "Start driving" to find well-rated food & coffee ahead of you.', '🍔☕');
+  else showEmpty('Tap "Start driving" to find food, coffee, gas & EV charging ahead of you.', '🍔☕');
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }

@@ -26,19 +26,17 @@
   </header>
 
   <nav id="filters">
-    <div class="seg" id="cat-seg">
-      <button class="seg-btn active" data-cat="both">Both</button>
-      <button class="seg-btn" data-cat="food">🍔 Food</button>
-      <button class="seg-btn" data-cat="coffee">☕ Coffee</button>
+    <div class="cats" id="cat-list">
+      <button class="cat-chip active" data-cat="food"><span>🍔</span> Food</button>
+      <button class="cat-chip active" data-cat="coffee"><span>☕</span> Coffee</button>
+      <button class="cat-chip" data-cat="gas"><span>⛽</span> Gas</button>
+      <button class="cat-chip" data-cat="ev"><span>⚡</span> EV</button>
     </div>
-    <button id="starbucks-toggle" class="chip">Starbucks only</button>
-    <button id="settings-btn" class="chip">⚙︎</button>
+    <button id="settings-btn" class="chip" aria-label="Settings">⚙︎</button>
   </nav>
 
   <main>
-    <div id="heading-banner" class="hidden">
-      Heading <b id="heading-dir">—</b> · <span id="speed">—</span>
-    </div>
+    <div id="heading-banner" class="hidden"></div>
     <ul id="results"></ul>
     <div id="empty" class="empty hidden"></div>
   </main>
@@ -57,8 +55,28 @@
       </label>
 
       <label class="field">
+        <span>Destination <span id="dest-status" class="muted"></span></span>
+        <input id="dest" type="text" placeholder="e.g. Lewiston, ME" autocomplete="off" />
+        <small>Sets your travel direction toward this place. Leave blank to use your live GPS heading.</small>
+      </label>
+
+      <div class="field">
+        <span>Cuisines <span class="muted">(food category)</span></span>
+        <div id="cuisine-list" class="cuisines"></div>
+        <small>Pick one or more to narrow restaurants. None selected = all restaurants.</small>
+      </div>
+
+      <label class="field row">
+        <input id="starbucks-only" type="checkbox" />
+        <span>Starbucks only (coffee)</span>
+      </label>
+
+      <hr />
+
+      <label class="field">
         <span>Minimum rating: <b id="rating-val">4.0</b>★</span>
         <input id="rating" type="range" min="0" max="5" step="0.1" value="4.0" />
+        <small>Applies to food & coffee. Gas and EV are ranked by proximity.</small>
       </label>
 
       <label class="field">

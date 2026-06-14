@@ -10,12 +10,17 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 
 ## What it does
 - Uses your phone's **GPS position + travel direction** (falls back to computing heading from movement when the GPS course isn't reported).
-- Searches **Google Places** for `restaurant`, `coffee_shop`, and `cafe` ahead of you.
-- Filters by **minimum rating** (default 4.0★) and **minimum review count** (default 50) so you only see genuinely well-rated spots.
-- Estimates **detour** as roughly 2× the perpendicular distance from your heading line (off the road and back) and drops anything beyond your max-detour setting.
+- **Categories** (multi-select chips): 🍔 Food, ☕ Coffee, ⛽ Gas, ⚡ EV charging — toggle any combination.
+- **Cuisine multi-select** (Settings): narrow food to Italian, Mexican, Sushi, BBQ, etc. — pick any number, or none for all restaurants.
+- **Set a destination** (Settings, e.g. "Lewiston, ME") to fix your travel direction toward it — more reliable than live heading, and works while stopped. Leave blank to use live GPS heading. The header then shows distance remaining to the destination.
+- Filters food & coffee by **minimum rating** (default 4.0★) and **minimum review count** (default 50). Gas and EV are ranked by **proximity** instead (ratings there are sparse).
+- Estimates **detour** as roughly 2× the perpendicular distance from your route line (off the road and back) and drops anything beyond your max-detour setting.
+- Shows each spot's **distance from you** and **city**, plus open/closed status.
 - **Starbucks-only** toggle for when you specifically want Starbucks.
 - Re-searches automatically every ~1 mile as you drive.
 - **Simulate driving** mode (Settings → Simulate driving) runs a mock Philly→Lewiston trip so you can try it at your desk.
+
+The destination lookup uses Places **Text Search**, and category searches use **Nearby Search** — both part of Places API (New), already covered by the key you enabled.
 
 ## One-time setup: Google Places API key
 1. Go to <https://console.cloud.google.com/>, create a project (or reuse one).

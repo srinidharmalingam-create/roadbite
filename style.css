@@ -14,6 +14,8 @@
   --red: #ff3b30;
   --orange: #ff9500;
   --brown: #a2845e;
+  --gas: #5856d6;
+  --ev: #30b0c7;
   --star: #ff9f0a;
   --seg-sel: #ffffff;
   --header-bg: rgba(249,249,251,.8);
@@ -39,6 +41,8 @@
     --red: #ff453a;
     --orange: #ff9f0a;
     --brown: #ac8e68;
+    --gas: #5e5ce6;
+    --ev: #40c8e0;
     --star: #ffd60a;
     --seg-sel: #636366;
     --header-bg: rgba(20,20,22,.8);
@@ -98,7 +102,7 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(52,199,89,0); }
 }
 
-/* ---------- Filters: Apple segmented control ---------- */
+/* ---------- Filters: category chips ---------- */
 #filters {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 16px 12px;
@@ -107,26 +111,26 @@ body {
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
 }
-.seg {
-  display: flex; background: var(--fill); border-radius: 9px; padding: 2px; flex: 1;
+.cats {
+  display: flex; gap: 7px; flex: 1; overflow-x: auto; padding-bottom: 1px;
+  scrollbar-width: none;
 }
-.seg-btn {
-  flex: 1; border: 0; background: transparent; color: var(--label);
-  font-size: 14px; font-weight: 600; padding: 7px 6px; border-radius: 7px;
-  cursor: pointer; transition: .2s; margin: 0 1px;
+.cats::-webkit-scrollbar { display: none; }
+.cat-chip {
+  flex: 0 0 auto; border: 0; background: var(--fill); color: var(--label);
+  font-size: 14px; font-weight: 600; padding: 8px 13px; border-radius: 9px;
+  cursor: pointer; transition: .15s; display: inline-flex; align-items: center; gap: 4px;
 }
-.seg-btn.active {
-  background: var(--seg-sel); color: var(--label);
-  box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 1px 1px rgba(0,0,0,.04);
-}
+.cat-chip span { font-size: 14px; }
+.cat-chip:active { opacity: .6; }
+.cat-chip.active { background: var(--blue); color: #fff; }
 .chip {
   border: 0; background: var(--fill); color: var(--blue);
-  font-size: 13.5px; font-weight: 600; padding: 8px 13px; border-radius: 9px; cursor: pointer;
-  white-space: nowrap; transition: .15s;
+  font-size: 15px; font-weight: 600; padding: 8px 12px; border-radius: 9px; cursor: pointer;
+  white-space: nowrap; transition: .15s; flex: 0 0 auto;
 }
 .chip:active { opacity: .6; }
-.chip.active { background: var(--blue); color: #fff; }
-#settings-btn { color: var(--label-2); font-size: 15px; }
+#settings-btn { color: var(--label-2); }
 
 /* ---------- Main ---------- */
 main { flex: 1; overflow-y: auto; padding: 6px 16px 130px; }
@@ -169,6 +173,8 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 130px; }
 .cat-icon svg { width: 18px; height: 18px; }
 .row.food .cat-icon { background: var(--orange); }
 .row.coffee .cat-icon { background: var(--brown); }
+.row.gas .cat-icon { background: var(--gas); }
+.row.ev .cat-icon { background: var(--ev); }
 
 .info { flex: 1; min-width: 0; }
 .title {
@@ -252,6 +258,18 @@ body::after {
 .field.row::before { content: none; }
 .field > span { font-weight: 600; font-size: 15px; }
 .field > span b { color: var(--blue); }
+.field > span .muted { font-weight: 400; }
+
+.cuisines { display: flex; flex-wrap: wrap; gap: 8px; }
+.cuisine-chip {
+  border: .5px solid var(--separator); background: var(--card); color: var(--label);
+  font-size: 14px; font-weight: 500; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  transition: .15s;
+}
+.cuisine-chip:active { opacity: .6; }
+.cuisine-chip.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+#dest-status { font-size: 13px; font-weight: 500; }
 .field small { color: var(--label-2); font-weight: 400; line-height: 1.45; font-size: 13px; }
 .field input[type=text] {
   background: var(--card); border: .5px solid var(--separator); color: var(--label);
