@@ -26,6 +26,7 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 - **ETA + arrival time** in the header when a destination is set (driving time and clock arrival, from the Directions route).
 - **Share** button on each row — opens the phone's share sheet with the place name + a Maps link (copies the link as a fallback).
 - **Proximity buzz** (opt-in, ☰ menu): vibrates and shows a toast when a ≥4.5★ food/coffee spot is within 1 mile (Android supports the vibration).
+- **Destination prompt**: tapping Start driving without a destination asks where you're headed (one-tap Home/favorite chips, type-in, or "Skip — use my live heading") so you get the precise route-based forward-only filtering.
 - Filters food & coffee by **minimum rating** (default 4.0★) and **minimum review count** (default 50). Gas and EV are ranked by **proximity** instead (ratings there are sparse).
 - Estimates **detour** as roughly 2× the perpendicular distance from your route line (off the road and back) and drops anything beyond your max-detour setting.
 - Shows each spot's **distance from you** and **city**, plus open/closed status.

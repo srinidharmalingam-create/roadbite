@@ -171,6 +171,20 @@
     </div>
   </div>
 
+  <!-- Destination prompt (shown on Start driving when none is set) -->
+  <div id="dest-prompt" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>Where are you headed?</h2>
+      <p class="muted">Pick a destination so suggestions stay strictly ahead on your route. You can change it anytime.</p>
+      <div id="prompt-quick" class="quick-prompt"></div>
+      <label class="field">
+        <input id="prompt-dest" type="text" placeholder="Enter a destination…" autocomplete="off" />
+      </label>
+      <button id="prompt-go" class="primary">Start driving</button>
+      <button id="prompt-skip" class="linkbtn">Skip — use my live heading</button>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

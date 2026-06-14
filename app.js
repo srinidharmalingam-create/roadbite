@@ -824,6 +824,13 @@ function setGps(cls, text) {
 
 function start() {
   if (state.running) return stop();
+  // First time starting without a destination, ask for one (precise forward-only).
+  if (!settings.destination && !state.destPromptDismissed) { openDestPrompt(); return; }
+  startTracking();
+}
+
+function startTracking() {
+  if (state.running) return;
   if (!('geolocation' in navigator)) { setGps('error', 'No GPS'); return; }
   state.running = true;
   els.start.textContent = 'Stop';
@@ -834,6 +841,33 @@ function start() {
     err => setGps('error', err.code === 1 ? 'Location denied' : 'GPS error'),
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
   );
+}
+
+// Destination prompt shown from Start driving when none is set.
+function openDestPrompt() {
+  const wrap = $('#prompt-quick');
+  wrap.innerHTML = '';
+  const items = [];
+  if (settings.home) items.push(['🏠', settings.home, 'Home']);
+  for (const f of settings.favorites) items.push(['⭐', f, f]);
+  for (const [icon, value, label] of items) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'qd';
+    b.textContent = `${icon} ${label.length > 18 ? label.slice(0, 18) + '…' : label}`;
+    b.addEventListener('click', () => promptGo(value));   // one tap: set + drive
+    wrap.appendChild(b);
+  }
+  wrap.classList.toggle('hidden', !items.length);
+  $('#prompt-dest').value = '';
+  $('#dest-prompt').classList.remove('hidden');
+  setTimeout(() => $('#prompt-dest').focus(), 150);
+}
+
+async function promptGo(value) {
+  $('#dest-prompt').classList.add('hidden');
+  state.destPromptDismissed = true;
+  if (value) await setDestination(value);
+  startTracking();
 }
 
 function stop() {
@@ -1088,6 +1122,9 @@ function init() {
     showEmpty('Google rejected the API key. Check the key and that this site’s domain is allowed in the key’s restrictions.', '⚠️');
 
   els.start.addEventListener('click', start);
+  $('#prompt-go').addEventListener('click', () => promptGo($('#prompt-dest').value.trim()));
+  $('#prompt-dest').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); promptGo($('#prompt-dest').value.trim()); } });
+  $('#prompt-skip').addEventListener('click', () => { state.destPromptDismissed = true; $('#dest-prompt').classList.add('hidden'); startTracking(); });
   $('#menu-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
