@@ -56,6 +56,24 @@ python3 -m http.server 4178
 ```
 (Geolocation works on `localhost` but for use *on your phone* you need an HTTPS host.)
 
+## Sharing with family & friends
+The API key is **injected at deploy time** from a GitHub Actions secret, so anyone who
+opens the hosted URL can use the app with nothing to configure — and the key is never in
+the source repo.
+
+- **To share:** just send people `https://srinidharmalingam-create.github.io/roadbite/`. They add it to their home screen and go.
+- **Security:** the key ends up in the deployed `config.js` (unavoidable for any client-side Maps app) but is **referrer-restricted** to this domain, so it only works from your app.
+- **Rotate / change the key:** update the repo secret, then re-run the deploy:
+  ```
+  gh secret set ROADBITE_KEY --repo <owner>/roadbite --body "NEW_KEY"
+  gh workflow run "Deploy to GitHub Pages" --repo <owner>/roadbite
+  ```
+- **Bound the cost** (recommended for a shared key): in Google Cloud → APIs & Services → set a **daily quota cap** on the Maps JavaScript and Places APIs, and add a **Billing → Budgets & alerts** budget so shared usage can't surprise you.
+
+How it works: `config.js` holds a `__ROADBITE_KEY__` placeholder; `.github/workflows/deploy.yml`
+replaces it with the `ROADBITE_KEY` secret and publishes to Pages. The app uses a key entered
+in ⚙︎ Settings if present, otherwise the baked-in shared key.
+
 ## Install to your home screen
 - **iPhone (Safari):** open the hosted URL → Share → **Add to Home Screen**.
 - **Android (Chrome):** open the URL → menu → **Install app / Add to Home Screen**.
