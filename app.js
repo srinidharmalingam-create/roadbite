@@ -137,7 +137,8 @@ async function search() {
 
   const request = {
     fields: ['displayName', 'location', 'rating', 'userRatingCount',
-             'businessStatus', 'regularOpeningHours', 'primaryType', 'id'],
+             'businessStatus', 'regularOpeningHours', 'primaryType',
+             'primaryTypeDisplayName', 'addressComponents', 'id'],
     locationRestriction: { center: { lat: state.pos.lat, lng: state.pos.lng }, radius: radiusMeters },
     includedTypes,
     maxResultCount: 20,
@@ -204,10 +205,44 @@ function rankPlace(p) {
   return {
     id: p.id, name: p.displayName, loc, rating, reviews,
     isCoffee, along, detour, straight, openNow, score,
+    city: extractCity(p.addressComponents),
+    typeLabel: humanizeType(p),
   };
 }
 
+// City name from the place's address components.
+function extractCity(components) {
+  if (!components || !components.length) return '';
+  const want = ['locality', 'postal_town', 'sublocality',
+                'administrative_area_level_3', 'neighborhood'];
+  for (const t of want) {
+    const c = components.find(c => (c.types || []).includes(t));
+    if (c) return c.shortText || c.longText || '';
+  }
+  return '';
+}
+
+// Friendly category label, e.g. "pizza_restaurant" -> "Pizza".
+function humanizeType(p) {
+  if (p.primaryTypeDisplayName) {
+    return (p.primaryTypeDisplayName.text || p.primaryTypeDisplayName);
+  }
+  const t = p.primaryType || '';
+  if (!t) return '';
+  return t.replace(/_/g, ' ')
+    .replace(/\brestaurant\b/i, '')
+    .replace(/\bshop\b/i, '')
+    .trim()
+    .replace(/\b\w/g, ch => ch.toUpperCase()) || 'Restaurant';
+}
+
 // ---------- Render ----------
+const SVG = {
+  food: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.1 2a.7.7 0 0 0-.7.7v4.9c0 .6-.3 1-.8 1.1V2.7a.7.7 0 0 0-1.4 0v6c-.5-.1-.8-.5-.8-1.1V2.7a.7.7 0 0 0-1.4 0v4.9c0 1.4.8 2.4 2.2 2.6V21a.9.9 0 0 0 1.8 0v-10.8c1.4-.2 2.2-1.2 2.2-2.6V2.7A.7.7 0 0 0 8.1 2zM15.5 2c-1.4 0-2.5 2.2-2.5 5.2 0 2.3.8 3.8 2 4.3V21a.9.9 0 0 0 1.8 0V2.9c0-.5-.4-.9-1.3-.9z"/></svg>',
+  coffee: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h13v7.5A4.5 4.5 0 0 1 12.5 16h-4A4.5 4.5 0 0 1 4 11.5V4zm13 1.8h1.3a2.1 2.1 0 0 1 0 4.2H17V5.8zM4.5 19h12a.9.9 0 0 1 0 1.8h-12a.9.9 0 0 1 0-1.8z"/></svg>',
+  nav: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.6 3.4a1 1 0 0 0-1.1-.2L4 9.6c-1 .4-.9 1.8.1 2.1l6.3 1.9 1.9 6.3c.3 1 1.7 1.1 2.1.1l6.4-15.5a1 1 0 0 0-.2-1.1z"/></svg>',
+};
+
 function fmtMi(mi) {
   if (mi == null) return '—';
   if (mi < 0.1) return '<0.1 mi';
@@ -229,29 +264,34 @@ function render() {
 
   for (const r of state.results) {
     const li = document.createElement('li');
-    li.className = 'card' + (r.isCoffee ? ' coffee' : '');
+    li.className = 'row' + (r.isCoffee ? ' coffee' : ' food');
 
-    const detourTxt = r.detour != null
-      ? `<span class="pill detour">↪ +${fmtMi(r.detour)}</span>`
-      : '';
+    // line 2: rating · category · city
+    const sub = [
+      `<span class="stars">★ ${r.rating.toFixed(1)}</span> <span class="count">(${fmtCount(r.reviews)})</span>`,
+      r.typeLabel && escapeHtml(r.typeLabel),
+      r.city && escapeHtml(r.city),
+    ].filter(Boolean).join('<span class="mid">·</span>');
+
+    // line 3: open status · detour off route
+    const detourTxt = r.detour != null ? `<span class="detour">+${fmtMi(r.detour)} off route</span>` : '';
     const openTxt = r.openNow == null ? ''
-      : `<span class="pill open ${r.openNow ? '' : 'closed'}">${r.openNow ? '● Open' : '● Closed'}</span>`;
+      : `<span class="open ${r.openNow ? '' : 'closed'}">${r.openNow ? 'Open' : 'Closed'}</span>`;
+    const line3 = [openTxt, detourTxt].filter(Boolean).join('<span class="mid">·</span>');
 
     li.innerHTML = `
-      <div class="icon">${r.isCoffee ? '☕' : '🍔'}</div>
-      <div class="body">
-        <p class="name">${escapeHtml(r.name)}</p>
-        <div class="meta">
-          <span class="pill rating">★ ${r.rating.toFixed(1)} <span class="count">${fmtCount(r.reviews)}</span></span>
-          ${detourTxt}
-          ${openTxt}
-        </div>
+      <div class="cat-icon">${r.isCoffee ? SVG.coffee : SVG.food}</div>
+      <div class="info">
+        <div class="title">${escapeHtml(r.name)}</div>
+        <div class="sub">${sub}</div>
+        ${line3 ? `<div class="line3">${line3}</div>` : ''}
       </div>
-      <button class="go" aria-label="Navigate to ${escapeHtml(r.name)}">
-        <span class="arrow">➔</span><span class="dist">${fmtMi(r.along)}</span>
-      </button>`;
+      <div class="trail">
+        <span class="away">${fmtMi(r.straight)}</span>
+        <button class="dirs" aria-label="Directions to ${escapeHtml(r.name)}">${SVG.nav}</button>
+      </div>`;
 
-    li.querySelector('.go').addEventListener('click', () => navigateTo(r));
+    li.querySelector('.dirs').addEventListener('click', () => navigateTo(r));
     els.results.appendChild(li);
   }
 }
