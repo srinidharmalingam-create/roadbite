@@ -597,7 +597,7 @@ function init() {
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 
-  if (!settings.apiKey) showEmpty('Welcome to RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
+  if (!settings.apiKey) showEmpty('Welcome to Suba’s RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
   else showEmpty('Tap "Start driving" to find food, coffee, gas & EV charging ahead of you.', '🍔☕');
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
