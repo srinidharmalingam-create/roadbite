@@ -153,10 +153,21 @@ function loadGoogle(key) {
   })({ key, v: 'weekly' });
 }
 
+// A key baked into the deployed site (config.js), ignored if still the placeholder.
+function bakedKey() {
+  const k = window.ROADBITE_KEY;
+  return (typeof k === 'string' && k && !k.includes('__')) ? k : '';
+}
+// User-entered key (Settings) takes priority; otherwise the shared baked-in key.
+function effectiveKey() {
+  return (settings.apiKey && settings.apiKey.trim()) || bakedKey();
+}
+
 async function ensurePlaces() {
   if (state.placesLib) return state.placesLib;
-  if (!settings.apiKey) throw new Error('NO_KEY');
-  loadGoogle(settings.apiKey);
+  const key = effectiveKey();
+  if (!key) throw new Error('NO_KEY');
+  loadGoogle(key);
   state.placesLib = await google.maps.importLibrary('places');
   return state.placesLib;
 }
@@ -821,19 +832,19 @@ function setupMap() {
   const btn = $('#map-toggle');
   const mapEl = document.getElementById('map');
   const apply = () => {
-    const visible = settings.showMap && !!settings.apiKey;
+    const visible = settings.showMap && !!effectiveKey();
     btn.classList.toggle('active', settings.showMap);
     mapEl.classList.toggle('hidden', !visible);
   };
   apply();
   btn.addEventListener('click', () => {
-    if (!settings.apiKey) { els.settings.classList.remove('hidden'); return; }  // need a key first
+    if (!effectiveKey()) { els.settings.classList.remove('hidden'); return; }  // need a key first
     settings.showMap = !settings.showMap;
     saveSettings();
     apply();
     if (settings.showMap) refreshMap();
   });
-  if (settings.showMap && settings.apiKey) refreshMap();
+  if (settings.showMap && effectiveKey()) refreshMap();
 }
 
 // ---------- Wire up ----------
@@ -854,7 +865,7 @@ function init() {
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 
-  if (!settings.apiKey) showEmpty('Welcome to Hino’s RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
+  if (!effectiveKey()) showEmpty('Welcome to Hino’s RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
   else showEmpty('Tap "Start driving" to find food, coffee, gas & EV charging ahead of you.', '🍔☕');
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
