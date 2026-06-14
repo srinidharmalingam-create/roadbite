@@ -46,6 +46,38 @@ function trackDistances(origin, p, headingDeg) {
 const COMPASS = ['N','NE','E','SE','S','SW','W','NW'];
 const compass = deg => COMPASS[Math.round(((deg % 360) / 45)) % 8];
 
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// Local planar coords (miles) of p relative to origin — fine over short spans.
+function toXY(origin, p) {
+  const k = Math.cos(toRad(origin.lat));
+  return { x: (p.lng - origin.lng) * k * 69.0, y: (p.lat - origin.lat) * 69.0 };
+}
+
+// Cumulative distance (miles) at each vertex of a path.
+function buildCum(path) {
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum[i] = cum[i - 1] + haversineMi(path[i - 1], path[i]);
+  return cum;
+}
+
+// Project a point onto a polyline. Returns {along, perp} in miles:
+// `along` = distance from the route start to the nearest point on the route,
+// `perp`  = how far the point sits off the route.
+function projectToPath(pos, path, cum) {
+  let best = { perp: Infinity, along: 0 };
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1];
+    const B = toXY(a, b), P = toXY(a, pos);
+    const bb = B.x * B.x + B.y * B.y;
+    const t = bb > 0 ? clamp((P.x * B.x + P.y * B.y) / bb, 0, 1) : 0;
+    const proj = { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+    const perp = haversineMi(pos, proj);
+    if (perp < best.perp) best = { perp, along: cum[i] + (cum[i + 1] - cum[i]) * t };
+  }
+  return best;
+}
+
 // What Google Places type(s) each category maps to.
 const CATEGORY_TYPES = {
   food: ['restaurant'],            // replaced by chosen cuisines when any are selected
@@ -233,7 +265,7 @@ async function refreshRoute(fit) {
   if (state.routeLine) { state.routeLine.setMap(null); state.routeLine = null; }
 
   if (!state.pos || !state.destCoords || !effectiveKey()) {
-    state.routeEta = null; updateHeadingBanner();
+    state.routeEta = null; state.routePath = null; state.routeCum = null; updateHeadingBanner();
     if (state.map && fit && state.pos && !state.destCoords) { state.map.setCenter(state.pos); state.map.setZoom(12); }
     return;
   }
@@ -245,6 +277,10 @@ async function refreshRoute(fit) {
     });
     const leg = res.routes?.[0]?.legs?.[0];
     state.routeEta = leg?.duration ? { dur: leg.duration.text, dist: leg.distance?.text, sec: leg.duration.value } : null;
+    // Store the route polyline so "forward only" follows the real road, not a straight line.
+    const path = (res.routes?.[0]?.overview_path || []).map(pt => ({ lat: pt.lat(), lng: pt.lng() }));
+    if (path.length > 1) { state.routePath = path; state.routeCum = buildCum(path); }
+    else { state.routePath = null; state.routeCum = null; }
     updateHeadingBanner();
     if (state.map && settings.showMap) {
       state.dirRenderer = new routes.DirectionsRenderer({
@@ -254,7 +290,7 @@ async function refreshRoute(fit) {
       state.dirRenderer.setDirections(res);
     }
   } catch (_) {
-    state.routeEta = null; updateHeadingBanner();
+    state.routeEta = null; state.routePath = null; state.routeCum = null; updateHeadingBanner();
     if (state.map && settings.showMap) {
       state.routeLine = new google.maps.Polyline({
         map: state.map, path: [state.pos, state.destCoords],
@@ -363,6 +399,10 @@ async function search() {
   for (const g of groups) for (const p of g) {
     if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
   }
+
+  // Our current progress along the route (if we have one) — the cutoff for "ahead".
+  state.userAlong = (state.routePath && state.routeCum)
+    ? projectToPath(state.pos, state.routePath, state.routeCum).along : null;
 
   state.results = sortResults(merged.map(rankPlace).filter(Boolean)).slice(0, 40);
   render();
@@ -475,35 +515,47 @@ function rankPlace(p) {
 
   if (state.starbucksOnly && kind === 'coffee' && !/starbucks/i.test(p.displayName)) return null;
 
+  // Decide "ahead vs already passed", plus how far ahead (along) and off-route (cross).
+  // Best: project onto the actual route polyline. Fallback: bearing relative to heading.
   const heading = effectiveHeading();
-  let along = haversineMi(state.pos, loc), cross = 0, ahead = true;
-  if (heading != null) {
+  const haveRoute = state.routePath && state.routeCum && state.userAlong != null;
+  let along, cross = 0, ahead = true, directed = true;
+
+  if (haveRoute) {
+    const proj = projectToPath(loc, state.routePath, state.routeCum);
+    cross = proj.perp;
+    along = proj.along - state.userAlong;   // signed: + = ahead on the route, - = passed
+    ahead = along > 0.05;                    // strictly further along the route than us
+  } else if (heading != null) {
     const t = trackDistances(state.pos, loc, heading);
-    along = t.along; cross = Math.abs(t.cross);
+    cross = Math.abs(t.cross);
     const ad = angleDiff(bearing(state.pos, loc), heading);
     ahead = ad <= 90 && ad >= -90;
+    along = ahead ? t.along : -t.along;      // negative when behind us
+  } else {
+    along = haversineMi(state.pos, loc);     // direction unknown (cold start, no dest)
+    directed = false;
   }
 
-  if (heading != null) {
-    if (settings.aheadOnly && !ahead) return null;
+  if (directed) {
+    if (settings.aheadOnly && !ahead) return null;   // drop anything already passed
     if (cross > settings.maxDetour) return null;
     if (along > settings.lookAhead) return null;
-    // Don't suggest stops well beyond the destination.
     if (state.destCoords) {
       const distDest = haversineMi(state.pos, state.destCoords);
-      if (along > distDest + 5) return null;
+      if (along > distDest + 5) return null;          // don't suggest past the destination
     }
   } else {
     if (along > settings.lookAhead) return null;
   }
 
-  const detour = heading != null ? cross * 2 : null;  // off-route and back
+  const detour = directed ? cross * 2 : null;  // off the route and back
   const straight = haversineMi(state.pos, loc);
 
   // Score: lower is better. Reward rating (food/coffee), penalize detour & distance.
   const ratingPenalty = ratedKind ? (5 - rating) * 4 : 6;
   const detourPenalty = (detour ?? straight) * 3;
-  const distPenalty = along * 0.4;
+  const distPenalty = Math.max(0, along) * 0.4;
   const score = ratingPenalty + detourPenalty + distPenalty;
 
   let openNow = null;
