@@ -93,6 +93,7 @@ const settings = {
   sort: 'best',         // 'best' | 'closest' | 'cheapest'
   openNowOnly: false,
   showMap: true,
+  alertNearby: false,   // buzz when a top pick is coming up
   starbucksOnly: false,
   minRating: 4.0,
   minReviews: 50,
@@ -225,52 +226,60 @@ function updateMapMarkers() {
   if (state.pos) state.markers.push(pin(state.pos, '#0a84ff', 6, 999, 'You'));
 }
 
-// Draw driving directions to the destination (falls back to a straight line if
-// the Directions API isn't enabled). Re-fits the view only when fit=true.
-async function drawRoute(fit) {
-  if (!state.map || !window.google) return;
+// Fetch driving directions to the destination: updates the ETA banner, and (if the
+// map is open) renders the route. Falls back to a straight line if Directions fails.
+async function refreshRoute(fit) {
   if (state.dirRenderer) { state.dirRenderer.setMap(null); state.dirRenderer = null; }
   if (state.routeLine) { state.routeLine.setMap(null); state.routeLine = null; }
 
-  if (!state.pos) return;
-  if (!state.destCoords) { if (fit) { state.map.setCenter(state.pos); state.map.setZoom(12); } return; }
-
+  if (!state.pos || !state.destCoords || !effectiveKey()) {
+    state.routeEta = null; updateHeadingBanner();
+    if (state.map && fit && state.pos && !state.destCoords) { state.map.setCenter(state.pos); state.map.setZoom(12); }
+    return;
+  }
   try {
-    const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary('routes');
-    const res = await new DirectionsService().route({
+    const routes = await google.maps.importLibrary('routes');
+    const res = await new routes.DirectionsService().route({
       origin: state.pos, destination: state.destCoords,
       travelMode: google.maps.TravelMode.DRIVING,
     });
-    state.dirRenderer = new DirectionsRenderer({
-      map: state.map, suppressMarkers: true, preserveViewport: !fit,
-      polylineOptions: { strokeColor: '#0a84ff', strokeWeight: 5, strokeOpacity: 0.85 },
-    });
-    state.dirRenderer.setDirections(res);
+    const leg = res.routes?.[0]?.legs?.[0];
+    state.routeEta = leg?.duration ? { dur: leg.duration.text, dist: leg.distance?.text, sec: leg.duration.value } : null;
+    updateHeadingBanner();
+    if (state.map && settings.showMap) {
+      state.dirRenderer = new routes.DirectionsRenderer({
+        map: state.map, suppressMarkers: true, preserveViewport: !fit,
+        polylineOptions: { strokeColor: '#0a84ff', strokeWeight: 5, strokeOpacity: 0.85 },
+      });
+      state.dirRenderer.setDirections(res);
+    }
   } catch (_) {
-    // Directions API unavailable — show a straight line.
-    state.routeLine = new google.maps.Polyline({
-      map: state.map, path: [state.pos, state.destCoords],
-      strokeColor: '#0a84ff', strokeWeight: 4, strokeOpacity: 0.6,
-    });
-    if (fit) {
-      const b = new google.maps.LatLngBounds();
-      b.extend(state.pos); b.extend(state.destCoords);
-      state.map.fitBounds(b, 60);
+    state.routeEta = null; updateHeadingBanner();
+    if (state.map && settings.showMap) {
+      state.routeLine = new google.maps.Polyline({
+        map: state.map, path: [state.pos, state.destCoords],
+        strokeColor: '#0a84ff', strokeWeight: 4, strokeOpacity: 0.6,
+      });
+      if (fit) {
+        const b = new google.maps.LatLngBounds();
+        b.extend(state.pos); b.extend(state.destCoords);
+        state.map.fitBounds(b, 60);
+      }
     }
   }
 }
 
-// Redraw the route when the destination changes, or every ~10 mi of travel.
-function maybeDrawRoute() {
-  if (!state.map) return;
+// Refresh the route/ETA when the destination changes, or every ~10 mi of travel.
+function maybeRefreshRoute() {
+  if (!state.pos) return;
   const sig = state.destCoords
     ? `${state.destCoords.lat.toFixed(3)},${state.destCoords.lng.toFixed(3)}` : 'none';
-  const movedFar = !state.routeOrigin || (state.pos && haversineMi(state.routeOrigin, state.pos) > 10);
+  const movedFar = !state.routeOrigin || haversineMi(state.routeOrigin, state.pos) > 10;
   const newDest = sig !== state.routeSig;
   if (newDest || movedFar) {
     state.routeSig = sig;
     state.routeOrigin = state.pos;
-    drawRoute(newDest);   // only re-fit the viewport for a brand-new destination
+    refreshRoute(newDest);   // only re-fit the map viewport for a brand-new destination
   }
 }
 
@@ -298,7 +307,7 @@ async function refreshMap() {
     await ensureMap();
     updateMapMarkers();
     state.routeSig = null;     // force a fresh fit when the map is (re)opened
-    maybeDrawRoute();
+    maybeRefreshRoute();
   } catch (_) { /* map is best-effort; the list still works */ }
 }
 
@@ -578,6 +587,7 @@ const SVG = {
   gas: '<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M3.5 3.2c0-.7.6-1.2 1.2-1.2h6c.7 0 1.2.5 1.2 1.2V21H3.5V3.2zM5.4 4.6h5.2v3.4H5.4V4.6z"/><path d="M13 6.2l2.6 2.6c.3.3.4.6.4 1v7.3a1.4 1.4 0 0 0 2.8 0V11h-1.3c-.5 0-.9-.4-.9-.9V7.6L15.1 6 13 6.2z"/><path d="M3 21.1h10a.9.9 0 0 1 0 1.8H3a.9.9 0 0 1 0-1.8z"/></svg>',
   ev: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2L4.5 13.4c-.4.5 0 1.3.6 1.3h5L9 21.3c-.1.8.9 1.2 1.4.6l8.6-11.4c.4-.5 0-1.3-.6-1.3h-5l1-6.5c.1-.8-.9-1.2-1.4-.6z"/></svg>',
   nav: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.6 3.4a1 1 0 0 0-1.1-.2L4 9.6c-1 .4-.9 1.8.1 2.1l6.3 1.9 1.9 6.3c.3 1 1.7 1.1 2.1.1l6.4-15.5a1 1 0 0 0-.2-1.1z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/></svg>',
 };
 
 function fmtMi(mi) {
@@ -631,16 +641,22 @@ function render() {
       </div>
       <div class="trail">
         <span class="away">${fmtMi(r.straight)}</span>
-        <button class="dirs" aria-label="Directions to ${escapeHtml(r.name)}">${SVG.nav}</button>
+        <div class="trail-btns">
+          <button class="share" aria-label="Share ${escapeHtml(r.name)}">${SVG.share}</button>
+          <button class="dirs" aria-label="Directions to ${escapeHtml(r.name)}">${SVG.nav}</button>
+        </div>
       </div>`;
 
     li.dataset.id = r.id;
     li.querySelector('.dirs').addEventListener('click', (e) => { e.stopPropagation(); navigateTo(r); });
+    li.querySelector('.share').addEventListener('click', (e) => { e.stopPropagation(); sharePlace(r); });
     li.addEventListener('click', () => highlightPin(r));   // row -> pin
     els.results.appendChild(li);
   }
 
-  if (state.map) { updateMapMarkers(); maybeDrawRoute(); }
+  if (state.map) updateMapMarkers();
+  maybeRefreshRoute();   // updates ETA banner even when the map is off
+  maybeAlert();
 }
 
 function showEmpty(msg, emoji) {
@@ -661,6 +677,42 @@ function navigateTo(r) {
     ? `https://maps.apple.com/?daddr=${q}&dirflg=d`
     : `https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving`;
   window.open(url, '_blank');
+}
+
+// Share a place via the OS share sheet, falling back to copying a Maps link.
+async function sharePlace(r) {
+  const url = `https://www.google.com/maps/search/?api=1&query=${r.loc.lat},${r.loc.lng}`;
+  const text = `${r.name}${r.city ? ' — ' + r.city : ''}${r.rating ? ` (★${r.rating.toFixed(1)})` : ''}`;
+  try {
+    if (navigator.share) { await navigator.share({ title: r.name, text, url }); return; }
+  } catch (_) { return; }  // user cancelled the share sheet
+  try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Link copied'); }
+  catch (_) { window.open(url, '_blank'); }
+}
+
+// Brief bottom toast.
+function toast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// Optional: buzz + toast once when a top-rated stop is coming up (Android supports vibrate).
+function maybeAlert() {
+  if (!settings.alertNearby || !state.running) return;
+  state.alerted = state.alerted || new Set();
+  for (const r of state.results) {
+    if ((r.kind === 'food' || r.kind === 'coffee') && r.rating >= 4.5 &&
+        r.straight <= 1.0 && !state.alerted.has(r.id)) {
+      state.alerted.add(r.id);
+      if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+      toast(`${r.isCoffee ? '☕' : '🍔'} ${r.name} coming up · ★${r.rating.toFixed(1)}`);
+      break;
+    }
+  }
 }
 
 // ---------- Position handling ----------
@@ -689,14 +741,21 @@ function onPosition(coords) {
 }
 
 function updateHeadingBanner() {
-  // With a destination set, show it + remaining distance; else show live heading.
+  // With a destination set, show it + ETA (from the route) or straight-line distance.
   if (state.destCoords && state.pos) {
-    const dist = haversineMi(state.pos, state.destCoords);
+    const sep = ' <span class="sep">·</span> ';
+    let parts = [`📍 To <b>${escapeHtml(state.destName || 'destination')}</b>`];
+    if (state.routeEta) {
+      parts.push(state.routeEta.dist || fmtMi(haversineMi(state.pos, state.destCoords)));
+      const arrive = new Date(Date.now() + state.routeEta.sec * 1000)
+        .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      parts.push(`${state.routeEta.dur} · arrive ${arrive}`);
+    } else {
+      parts.push(`${fmtMi(haversineMi(state.pos, state.destCoords))} away`);
+    }
+    if (state.speedMph != null) parts.push(`${Math.round(state.speedMph)} mph`);
     els.headingBanner.classList.remove('hidden');
-    els.headingBanner.innerHTML =
-      `📍 To <b>${escapeHtml(state.destName || 'destination')}</b>` +
-      ` <span class="sep">·</span> ${fmtMi(dist)} away` +
-      (state.speedMph != null ? ` <span class="sep">·</span> ${Math.round(state.speedMph)} mph` : '');
+    els.headingBanner.innerHTML = parts.join(sep);
     return;
   }
   if (state.heading == null) { els.headingBanner.classList.add('hidden'); return; }
@@ -779,6 +838,7 @@ function bindSettings() {
     ['#ahead', 'lookAhead', 'value', parseFloat, '#ahead-val'],
     ['#ahead-only', 'aheadOnly', 'checked', v => v],
     ['#starbucks-only', 'starbucksOnly', 'checked', v => v],
+    ['#alert-nearby', 'alertNearby', 'checked', v => v],
   ];
   for (const [sel, key, prop, parse, labelSel, fmt] of map) {
     const el = $(sel);
@@ -989,4 +1049,4 @@ function init() {
 document.addEventListener('DOMContentLoaded', init);
 
 // Expose a few internals for testing in the preview harness.
-window.RoadBite = { state, settings, onPosition, search, startSim, render, renderQuickDest, sortResults };
+window.RoadBite = { state, settings, onPosition, search, startSim, render, renderQuickDest, sortResults, updateHeadingBanner, toast };
