@@ -133,6 +133,20 @@ body {
 /* ---------- Main ---------- */
 main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 
+/* Quick destination chips (Home + favorites) */
+.quick {
+  display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px;
+  scrollbar-width: none;
+}
+.quick::-webkit-scrollbar { display: none; }
+.qd {
+  flex: 0 0 auto; border: .5px solid var(--separator); background: var(--card); color: var(--label);
+  font-size: 16px; font-weight: 600; padding: 9px 15px; border-radius: 999px; cursor: pointer;
+  transition: .15s; white-space: nowrap;
+}
+.qd:active { opacity: .6; }
+.qd.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
 #heading-banner {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   color: var(--label-2); font-size: 16px; font-weight: 500;
@@ -190,6 +204,8 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 .line3 .detour { color: var(--green); font-weight: 500; }
 .line3 .open { color: var(--green); font-weight: 600; }
 .line3 .open.closed { color: var(--red); }
+.line3 .price { color: var(--green); font-weight: 700; }
+.line3 .evinfo { color: var(--ev); font-weight: 600; }
 
 .trail {
   flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -268,6 +284,23 @@ body::after {
 .cuisine-chip.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 
 #dest-status { font-size: 15px; font-weight: 500; }
+
+.favs { display: flex; flex-direction: column; gap: 8px; }
+.favs.empty-favs { display: none; }
+.fav-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--card); border: .5px solid var(--separator); border-radius: 11px;
+  padding: 11px 14px; font-size: 16px;
+}
+.fav-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fav-del {
+  flex: 0 0 auto; border: 0; background: var(--fill); color: var(--label-2);
+  width: 30px; height: 30px; border-radius: 50%; font-size: 14px; cursor: pointer;
+}
+.fav-del:active { opacity: .6; }
+.fav-add { display: flex; gap: 8px; }
+.fav-add input { flex: 1; }
+.fav-add .chip { background: var(--blue); color: #fff; }
 .field small { color: var(--label-2); font-weight: 400; line-height: 1.45; font-size: 15px; }
 .field input[type=text] {
   background: var(--card); border: .5px solid var(--separator); color: var(--label);

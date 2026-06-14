@@ -88,6 +88,8 @@ const settings = {
   categories: ['food', 'coffee'],
   cuisines: [],         // selected cuisine type keys
   destination: '',
+  home: '',             // saved home address
+  favorites: [],        // saved favorite destination strings
   starbucksOnly: false,
   minRating: 4.0,
   minReviews: 50,
@@ -124,23 +126,34 @@ function effectiveHeading() {
 }
 
 // ---------- Google Places loader ----------
+// Google's official inline bootstrap. Unlike a plain <script> tag, this defines
+// google.maps.importLibrary() synchronously, so awaiting it never races the load.
 function loadGoogle(key) {
-  return new Promise((resolve, reject) => {
-    if (window.google?.maps?.importLibrary) return resolve();
-    window.gm_authFailure = () => reject(new Error('API key rejected by Google'));
-    const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&v=weekly&loading=async`;
-    s.async = true;
-    s.onerror = () => reject(new Error('Failed to load Google Maps script'));
-    s.onload = () => resolve();
-    document.head.appendChild(s);
-  });
+  if (window.google?.maps?.importLibrary) return;
+  ((g) => {
+    let h, a, k, p = 'The Google Maps JavaScript API', c = 'google', l = 'importLibrary',
+      q = '__ib__', m = document, b = window;
+    b = b[c] || (b[c] = {});
+    const d = b.maps || (b.maps = {}), r = new Set(), e = new URLSearchParams(),
+      u = () => h || (h = new Promise(async (f, n) => {
+        await (a = m.createElement('script'));
+        e.set('libraries', [...r] + '');
+        for (k in g) e.set(k.replace(/[A-Z]/g, t => '_' + t[0].toLowerCase()), g[k]);
+        e.set('callback', c + '.maps.' + q);
+        a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+        d[q] = f;
+        a.onerror = () => h = n(Error(p + ' could not load.'));
+        a.nonce = m.querySelector('script[nonce]')?.nonce || '';
+        m.head.append(a);
+      }));
+    d[l] ? console.warn(p + ' only loads once. Ignoring:', g) : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+  })({ key, v: 'weekly' });
 }
 
 async function ensurePlaces() {
   if (state.placesLib) return state.placesLib;
   if (!settings.apiKey) throw new Error('NO_KEY');
-  await loadGoogle(settings.apiKey);
+  loadGoogle(settings.apiKey);
   state.placesLib = await google.maps.importLibrary('places');
   return state.placesLib;
 }
@@ -175,8 +188,11 @@ async function search() {
     const includedTypes = (cat === 'food' && settings.cuisines.length)
       ? settings.cuisines.slice()
       : CATEGORY_TYPES[cat];
+    const catFields = fields.slice();
+    if (cat === 'gas') catFields.push('fuelOptions');         // fuel prices
+    if (cat === 'ev') catFields.push('evChargeOptions');      // charger speed/plugs
     return Place.searchNearby({
-      fields, locationRestriction: { center, radius: radiusMeters }, includedTypes,
+      fields: catFields, locationRestriction: { center, radius: radiusMeters }, includedTypes,
       maxResultCount: 20, rankPreference: SearchNearbyRankPreference.DISTANCE,
     }).then(r => r.places || []).catch(() => []);
   });
@@ -225,6 +241,41 @@ async function resolveDestination(lib) {
 function setDestStatus(text) {
   const el = document.getElementById('dest-status');
   if (el) el.textContent = text;
+}
+
+// Set (or clear) the active destination and refresh.
+function setDestination(value) {
+  settings.destination = value || '';
+  state.destResolvedFor = '';
+  const di = $('#dest'); if (di) di.value = settings.destination;
+  if (!settings.destination) { state.destCoords = null; state.destName = ''; setDestStatus(''); }
+  saveSettings();
+  renderQuickDest();
+  if (state.pos) search(); else updateHeadingBanner();
+}
+
+// One-tap destination chips (Home + favorites) shown at the top of the home screen.
+function renderQuickDest() {
+  const wrap = $('#quick-dest');
+  const items = [];
+  if (settings.home) items.push(['🏠', settings.home, 'Home']);
+  for (const f of settings.favorites) items.push(['⭐', f, f]);
+  if (!items.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = '';
+  const mk = (label, value, active, onClick) => {
+    const b = document.createElement('button');
+    b.className = 'qd' + (active ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    wrap.appendChild(b);
+  };
+  mk('📍 Live', '', !settings.destination, () => setDestination(''));
+  for (const [icon, value, label] of items) {
+    const short = label.length > 16 ? label.slice(0, 16) + '…' : label;
+    mk(`${icon} ${short}`, value, settings.destination === value, () => setDestination(value));
+  }
 }
 
 function placeKind(p) {
@@ -288,7 +339,36 @@ function rankPlace(p) {
     isCoffee: kind === 'coffee', along, detour, straight, openNow, score,
     city: extractCity(p.addressComponents),
     typeLabel: humanizeType(p, kind),
+    fuelPrice: kind === 'gas' ? fuelPriceLabel(p) : '',
+    evInfo: kind === 'ev' ? evInfoLabel(p) : '',
   };
+}
+
+// Cheapest-grade fuel price, preferring regular unleaded. "" if none reported.
+function fuelPriceLabel(p) {
+  const prices = p.fuelOptions?.fuelPrices;
+  if (!prices || !prices.length) return '';
+  const chosen = prices.find(x => x.type === 'REGULAR_UNLEADED') || prices[0];
+  const m = chosen.price;
+  if (!m) return '';
+  const val = Number(m.units || 0) + (m.nanos || 0) / 1e9;
+  if (!val) return '';
+  const cur = m.currencyCode === 'USD' ? '$' : (m.currencyCode || '') + ' ';
+  const grade = { REGULAR_UNLEADED: 'reg', MIDGRADE: 'mid', PREMIUM: 'prem', DIESEL: 'diesel' }[chosen.type] || '';
+  return `${cur}${val.toFixed(2)}${grade ? ' ' + grade : ''}`;
+}
+
+// Charger speed + plug count (Google does not expose EV pricing). "" if none.
+function evInfoLabel(p) {
+  const opt = p.evChargeOptions;
+  if (!opt) return '';
+  let kw = 0;
+  for (const a of (opt.connectorAggregation || [])) kw = Math.max(kw, a.maxChargeRateKw || 0);
+  const plugs = opt.connectorCount || 0;
+  const parts = [];
+  if (kw) parts.push(`${Math.round(kw)} kW`);
+  if (plugs) parts.push(`${plugs} plug${plugs > 1 ? 's' : ''}`);
+  return parts.join(' · ');
 }
 
 // City name from the place's address components.
@@ -361,11 +441,13 @@ function render() {
       r.city && escapeHtml(r.city),
     ].filter(Boolean).join('<span class="mid">·</span>');
 
-    // line 3: open status · detour off route
+    // line 3: price/charge info · open status · detour off route
     const detourTxt = r.detour != null ? `<span class="detour">+${fmtMi(r.detour)} off route</span>` : '';
     const openTxt = r.openNow == null ? ''
       : `<span class="open ${r.openNow ? '' : 'closed'}">${r.openNow ? 'Open' : 'Closed'}</span>`;
-    const line3 = [openTxt, detourTxt].filter(Boolean).join('<span class="mid">·</span>');
+    const priceTxt = r.fuelPrice ? `<span class="price">${escapeHtml(r.fuelPrice)}</span>` : '';
+    const evTxt = r.evInfo ? `<span class="evinfo">${escapeHtml(r.evInfo)}</span>` : '';
+    const line3 = [priceTxt, evTxt, openTxt, detourTxt].filter(Boolean).join('<span class="mid">·</span>');
 
     li.innerHTML = `
       <div class="cat-icon">${SVG[r.kind] || SVG.food}</div>
@@ -535,7 +617,9 @@ function bindSettings() {
     $(sel).addEventListener('change', () => state.pos && search()));
 
   $('#api-key').addEventListener('change', () => {
-    state.placesLib = null; // force reload with new key
+    // Google Maps loads once per page; a new key only takes effect after reload.
+    if (window.google?.maps) { saveSettings(); location.reload(); return; }
+    state.placesLib = null;
     if (state.pos) search();
   });
 
@@ -543,14 +627,55 @@ function bindSettings() {
   const dest = $('#dest');
   dest.value = settings.destination;
   if (settings.destination) setDestStatus('…');
-  dest.addEventListener('change', () => {
-    settings.destination = dest.value.trim();
-    state.destResolvedFor = '';   // force re-resolve
+  dest.addEventListener('change', () => setDestination(dest.value.trim()));
+
+  // Home
+  const home = $('#home');
+  home.value = settings.home;
+  home.addEventListener('change', () => {
+    settings.home = home.value.trim();
     saveSettings();
-    if (state.pos) search(); else updateHeadingBanner();
+    renderQuickDest();
   });
 
+  // Favorites
+  renderFavList();
+  const addFav = () => {
+    const inp = $('#fav-input');
+    const v = inp.value.trim();
+    if (v && !settings.favorites.includes(v)) {
+      settings.favorites.push(v);
+      saveSettings();
+      renderFavList();
+      renderQuickDest();
+    }
+    inp.value = '';
+  };
+  $('#fav-add-btn').addEventListener('click', addFav);
+  $('#fav-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFav(); } });
+
   buildCuisineChips();
+}
+
+function renderFavList() {
+  const wrap = $('#fav-list');
+  wrap.innerHTML = '';
+  if (!settings.favorites.length) { wrap.classList.add('empty-favs'); return; }
+  wrap.classList.remove('empty-favs');
+  settings.favorites.forEach((fav, i) => {
+    const row = document.createElement('div');
+    row.className = 'fav-row';
+    row.innerHTML = `<span>⭐ ${escapeHtml(fav)}</span>`;
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'fav-del'; del.textContent = '✕';
+    del.setAttribute('aria-label', 'Remove ' + fav);
+    del.addEventListener('click', () => {
+      settings.favorites.splice(i, 1);
+      saveSettings(); renderFavList(); renderQuickDest();
+    });
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
 }
 
 function buildCuisineChips() {
@@ -591,13 +716,18 @@ function init() {
   loadSettings();
   bindSettings();
   setupCategories();
+  renderQuickDest();
+
+  // Surface Google auth/referrer problems instead of failing silently.
+  window.gm_authFailure = () =>
+    showEmpty('Google rejected the API key. Check the key and that this site’s domain is allowed in the key’s restrictions.', '⚠️');
 
   els.start.addEventListener('click', start);
   $('#settings-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 
-  if (!settings.apiKey) showEmpty('Welcome to Suba’s RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
+  if (!settings.apiKey) showEmpty('Welcome to Hino’s RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
   else showEmpty('Tap "Start driving" to find food, coffee, gas & EV charging ahead of you.', '🍔☕');
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

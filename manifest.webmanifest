@@ -1,6 +1,6 @@
 {
-  "name": "Suba's RoadBite — eats & coffee ahead",
-  "short_name": "Suba's RoadBite",
+  "name": "Hino's RoadBite — eats & coffee ahead",
+  "short_name": "Hino's RoadBite",
   "description": "Finds well-rated restaurants and coffee ahead of you on a long drive, ranked by how little they add to your route.",
   "start_url": "./index.html",
   "display": "standalone",

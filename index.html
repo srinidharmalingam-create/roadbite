@@ -7,17 +7,17 @@
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141416" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Suba's RoadBite" />
+  <meta name="apple-mobile-web-app-title" content="Hino's RoadBite" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="style.css" />
-  <title>Suba's RoadBite — eats & coffee ahead</title>
+  <title>Hino's RoadBite — eats & coffee ahead</title>
 </head>
 <body>
   <header id="status-bar">
     <div class="brand">
       <span class="logo">🚗</span>
-      <span class="title">Suba's RoadBite</span>
+      <span class="title">Hino's RoadBite</span>
     </div>
     <div id="gps" class="gps off">
       <span class="dot"></span>
@@ -36,6 +36,7 @@
   </nav>
 
   <main>
+    <div id="quick-dest" class="quick hidden"></div>
     <div id="heading-banner" class="hidden"></div>
     <ul id="results"></ul>
     <div id="empty" class="empty hidden"></div>
@@ -59,6 +60,22 @@
         <input id="dest" type="text" placeholder="e.g. Lewiston, ME" autocomplete="off" />
         <small>Sets your travel direction toward this place. Leave blank to use your live GPS heading.</small>
       </label>
+
+      <label class="field">
+        <span>🏠 Home</span>
+        <input id="home" type="text" placeholder="e.g. Philadelphia, PA" autocomplete="off" />
+        <small>Appears as a one-tap destination on the home screen.</small>
+      </label>
+
+      <div class="field">
+        <span>⭐ Favorite destinations</span>
+        <div id="fav-list" class="favs"></div>
+        <div class="fav-add">
+          <input id="fav-input" type="text" placeholder="Add a place…" autocomplete="off" />
+          <button id="fav-add-btn" type="button" class="chip">Add</button>
+        </div>
+        <small>Saved places show as one-tap chips at the top of the home screen.</small>
+      </div>
 
       <div class="field">
         <span>Cuisines <span class="muted">(food category)</span></span>
