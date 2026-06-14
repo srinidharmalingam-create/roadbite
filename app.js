@@ -196,8 +196,13 @@ async function ensureMap() {
 async function geocodeText(q) {
   try {
     const { Place } = await ensurePlaces();
-    const { places } = await Place.searchByText({ textQuery: q, fields: ['location'], maxResultCount: 1 });
-    if (places && places[0]) return { lat: places[0].location.lat(), lng: places[0].location.lng() };
+    const { places } = await Place.searchByText({
+      textQuery: q, fields: ['location', 'displayName', 'formattedAddress'], maxResultCount: 1,
+    });
+    if (places && places[0]) {
+      const p = places[0];
+      return { lat: p.location.lat(), lng: p.location.lng(), name: p.displayName || p.formattedAddress || q };
+    }
   } catch (_) {}
   return null;
 }
@@ -396,15 +401,23 @@ function setDestStatus(text) {
   if (el) el.textContent = text;
 }
 
-// Set (or clear) the active destination and refresh.
-function setDestination(value) {
+// Set (or clear) the active destination, validate it, and refresh.
+async function setDestination(value) {
   settings.destination = value || '';
   state.destResolvedFor = '';
   const di = $('#dest'); if (di) di.value = settings.destination;
-  if (!settings.destination) { state.destCoords = null; state.destName = ''; setDestStatus(''); }
   saveSettings();
   renderQuickDest();
-  if (state.pos) search(); else updateHeadingBanner();
+
+  if (!settings.destination) {
+    state.destCoords = null; state.destName = ''; setDestStatus('');
+  } else if (effectiveKey()) {
+    // Validate right away so the user gets ✓ / not-found even before GPS starts.
+    setDestStatus('…');
+    try { await resolveDestination(await ensurePlaces()); } catch (_) {}
+  }
+  updateHeadingBanner();
+  if (state.pos) search();
 }
 
 // One-tap destination chips (Home + favorites) shown at the top of the home screen.
@@ -794,32 +807,59 @@ function bindSettings() {
   if (settings.destination) setDestStatus('…');
   dest.addEventListener('change', () => setDestination(dest.value.trim()));
 
-  // Home
+  // Home (validated on entry)
   const home = $('#home');
   home.value = settings.home;
-  home.addEventListener('change', () => {
+  home.addEventListener('change', async () => {
     settings.home = home.value.trim();
     saveSettings();
     renderQuickDest();
+    if (!settings.home) { setStatus('#home-status', ''); return; }
+    if (!effectiveKey()) { setStatus('#home-status', ''); return; }
+    setStatus('#home-status', '…');
+    const c = await geocodeText(settings.home);
+    setStatus('#home-status', c ? '✓ ' + c.name : '· not found', !c);
   });
+  if (settings.home && effectiveKey()) {
+    setStatus('#home-status', '…');
+    geocodeText(settings.home).then(c => setStatus('#home-status', c ? '✓ ' + c.name : '· not found', !c));
+  }
 
-  // Favorites
+  // Favorites (validated before adding)
   renderFavList();
-  const addFav = () => {
+  const addFav = async () => {
     const inp = $('#fav-input');
     const v = inp.value.trim();
-    if (v && !settings.favorites.includes(v)) {
-      settings.favorites.push(v);
-      saveSettings();
-      renderFavList();
-      renderQuickDest();
+    if (!v || settings.favorites.includes(v)) { inp.value = ''; return; }
+    if (effectiveKey()) {
+      setFavMsg('Checking address…');
+      const c = await geocodeText(v);
+      if (!c) { setFavMsg('Couldn’t find “' + v + '”. Try a more specific name.', true); return; }
     }
+    settings.favorites.push(v);
+    saveSettings();
+    renderFavList();
+    renderQuickDest();
     inp.value = '';
+    setFavMsg('Saved places show as one-tap chips at the top of the home screen.');
   };
   $('#fav-add-btn').addEventListener('click', addFav);
   $('#fav-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFav(); } });
 
   buildCuisineChips();
+}
+
+function setStatus(sel, text, isError) {
+  const el = $(sel);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = isError ? 'var(--red)' : '';
+}
+function setFavMsg(text, isError) {
+  const el = $('#fav-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = isError ? 'var(--red)' : '';
 }
 
 function renderFavList() {
@@ -902,11 +942,11 @@ function setupControls() {
 
 function setupMap() {
   const btn = $('#map-toggle');
-  const mapEl = document.getElementById('map');
+  const wrap = document.getElementById('map-wrap');
   const apply = () => {
     const visible = settings.showMap && !!effectiveKey();
     btn.classList.toggle('active', settings.showMap);
-    mapEl.classList.toggle('hidden', !visible);
+    wrap.classList.toggle('hidden', !visible);
   };
   apply();
   btn.addEventListener('click', () => {
@@ -915,6 +955,9 @@ function setupMap() {
     saveSettings();
     apply();
     if (settings.showMap) refreshMap();
+  });
+  $('#recenter-btn').addEventListener('click', () => {
+    if (state.map && state.pos) { state.map.panTo(state.pos); state.map.setZoom(14); }
   });
   if (settings.showMap && effectiveKey()) refreshMap();
 }

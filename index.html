@@ -39,7 +39,17 @@
   </nav>
 
   <main>
-    <div id="map" class="map hidden"></div>
+    <div id="map-wrap" class="map-wrap hidden">
+      <div id="map" class="map"></div>
+      <button id="recenter-btn" class="recenter" aria-label="Recenter on my location">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="6"/>
+          <line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/>
+          <line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+    </div>
     <div id="quick-dest" class="quick hidden"></div>
     <div id="heading-banner" class="hidden"></div>
     <div id="controls" class="hidden">
@@ -74,7 +84,7 @@
       </label>
 
       <label class="field">
-        <span>🏠 Home</span>
+        <span>🏠 Home <span id="home-status" class="muted"></span></span>
         <input id="home" type="text" placeholder="e.g. Philadelphia, PA" autocomplete="off" />
         <small>Appears as a one-tap destination on the home screen.</small>
       </label>
@@ -86,7 +96,7 @@
           <input id="fav-input" type="text" placeholder="Add a place…" autocomplete="off" />
           <button id="fav-add-btn" type="button" class="chip">Add</button>
         </div>
-        <small>Saved places show as one-tap chips at the top of the home screen.</small>
+        <small id="fav-msg">Saved places show as one-tap chips at the top of the home screen.</small>
       </div>
 
       <div class="field">
@@ -129,6 +139,23 @@
       </label>
 
       <hr />
+      <details>
+        <summary>How to use</summary>
+        <ol class="help">
+          <li>Pick what you want from the chips up top — <b>Food</b>, <b>Coffee</b>, <b>Gas</b>, <b>EV</b> (tap more than one).</li>
+          <li>Tap <b>Start driving</b> to use your live GPS. Results refresh as you drive.</li>
+          <li>Set a <b>Destination</b> (or tap <b>Home</b> / a ⭐ favorite) to aim suggestions that way — or leave it on <b>📍 Live</b> to follow your heading.</li>
+          <li>Use <b>Best / Closest / Cheapest</b> to re-sort, and <b>Open now</b> to hide closed spots.</li>
+          <li>Tap the blue arrow for turn-by-turn in Maps. Tap a row to find it on the 🗺 map (and a pin to find its row).</li>
+        </ol>
+      </details>
+
+      <details>
+        <summary>About</summary>
+        <p class="muted">Hino’s RoadBite finds well-rated restaurants, coffee, gas, and EV charging just ahead of you on a drive — ranked by how little they add to your route. Built for the Philadelphia ⇄ Lewiston, ME run. Place data and ratings from Google.</p>
+        <p class="muted">Version <span id="app-version">1.0</span> · <a href="https://github.com/srinidharmalingam-create/roadbite" target="_blank" rel="noopener">source</a></p>
+      </details>
+
       <details>
         <summary>Simulate driving (testing)</summary>
         <p class="muted">Run a mock Philly→Lewiston drive without moving. Useful to try the app at your desk.</p>
