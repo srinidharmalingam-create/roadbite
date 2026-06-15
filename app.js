@@ -107,12 +107,6 @@ function speedEstimate() {
   return (state.speedMph != null && state.speedMph > 8) ? state.speedMph : 50;
 }
 
-// Quick-service food types — fast to get in and out of (vs sit-down with a table wait).
-const QUICK_TYPES = new Set([
-  'fast_food_restaurant', 'cafe', 'coffee_shop', 'bakery', 'sandwich_shop',
-  'meal_takeaway', 'meal_delivery', 'donut_shop', 'ice_cream_shop', 'cafeteria',
-]);
-
 // What Google Places type(s) each category maps to.
 const CATEGORY_TYPES = {
   food: ['restaurant'],            // replaced by chosen cuisines when any are selected
@@ -161,7 +155,6 @@ const settings = {
   openNowOnly: false,
   timeWindow: 0,        // minutes; 0 = any, else only show stops reachable within N min
   units: 'mi',          // 'mi' | 'km'
-  quickStops: false,    // prefer fast/takeout food over sit-down (avoid table waits)
   showMap: true,
   alertNearby: false,   // buzz when a top pick is coming up
   starbucksOnly: false,
@@ -442,7 +435,6 @@ async function search() {
     const extra = [];
     if (cat === 'gas') extra.push('fuelOptions');             // fuel prices
     if (cat === 'ev') extra.push('evChargeOptions');          // charger speed/plugs
-    if (cat === 'food' || cat === 'coffee') extra.push('takeout');  // grab-and-go
     const useExtra = extra.filter(f => !state.disabledFields.has(f));
     const run = flds => Place.searchNearby({
       fields: flds, locationRestriction: { center, radius: radiusMeters }, includedTypes,
@@ -596,11 +588,6 @@ function rankPlace(p) {
 
   if (state.starbucksOnly && kind === 'coffee' && !/starbucks/i.test(p.displayName)) return null;
 
-  // "Prefer quick stops": for sit-down food, keep only fast/takeout-friendly places.
-  const takeout = p.takeout === true;
-  const isQuick = kind === 'coffee' || takeout || QUICK_TYPES.has(p.primaryType || '');
-  if (settings.quickStops && kind === 'food' && !isQuick) return null;
-
   // Decide "ahead vs already passed", plus how far ahead (along) and off-route (cross).
   // Best: project onto the actual route polyline. Fallback: bearing relative to heading.
   const heading = effectiveHeading();
@@ -672,7 +659,6 @@ function rankPlace(p) {
     fuelPrice: fuel ? fuel.label : '',
     fuelValue: fuel ? fuel.value : Infinity,
     evInfo: kind === 'ev' ? evInfoLabel(p) : '',
-    takeout,
   };
 }
 
@@ -785,8 +771,7 @@ function render() {
       : `<span class="open ${r.openNow ? '' : 'closed'}">${r.openNow ? 'Open' : 'Closed'}</span>`;
     const priceTxt = r.fuelPrice ? `<span class="price">${escapeHtml(r.fuelPrice)}</span>` : '';
     const evTxt = r.evInfo ? `<span class="evinfo">${escapeHtml(r.evInfo)}</span>` : '';
-    const takeoutTxt = r.takeout ? `<span class="takeout">Takeout</span>` : '';
-    const line3 = [priceTxt, evTxt, takeoutTxt, openTxt, detourTxt].filter(Boolean).join('<span class="mid">·</span>');
+    const line3 = [priceTxt, evTxt, openTxt, detourTxt].filter(Boolean).join('<span class="mid">·</span>');
 
     li.innerHTML = `
       <div class="cat-icon">${SVG[r.kind] || SVG.food}</div>
@@ -1065,7 +1050,6 @@ function bindSettings() {
     ['#ahead-only', 'aheadOnly', 'checked', v => v],
     ['#starbucks-only', 'starbucksOnly', 'checked', v => v],
     ['#alert-nearby', 'alertNearby', 'checked', v => v],
-    ['#quick-stops', 'quickStops', 'checked', v => v],
   ];
   for (const [sel, key, prop, parse, labelSel, fmt] of map) {
     const el = $(sel);
@@ -1079,7 +1063,7 @@ function bindSettings() {
   }
   buildSteppers();
   // Re-run search when filters that affect ranking change & we have a fix.
-  ['#ahead-only', '#starbucks-only', '#quick-stops'].forEach(sel =>
+  ['#ahead-only', '#starbucks-only'].forEach(sel =>
     $(sel).addEventListener('change', () => state.pos && search()));
 
   $('#api-key').addEventListener('change', () => {

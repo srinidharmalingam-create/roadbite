@@ -272,7 +272,6 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 .line3 .open.closed { color: var(--red); }
 .line3 .price { color: var(--green); font-weight: 700; }
 .line3 .evinfo { color: var(--ev); font-weight: 600; }
-.line3 .takeout { color: var(--brown); font-weight: 600; }
 
 .trail {
   flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
