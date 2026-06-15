@@ -16,13 +16,14 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 - **Home + Favorite destinations** (Settings): save a Home and any number of favorites; they appear as one-tap chips at the top of the home screen (plus a "📍 Live" chip to switch back to live heading).
 - **Gas prices** on gas-station rows (from Google's `fuelOptions`, where reported) and **EV charger speed + plug count** on charging rows (Google does not expose EV pricing).
 - **Sort**: Best (rating + detour + distance), Closest (distance from you), or Cheapest (gas price first).
+- **Reach in** time window: Any / 15 min / 30 min / 1 hr — answers "can we eat in 30 minutes?" by showing only stops you can get to within that time (each row shows an estimated `~N min`, based on your current speed and the route).
 - **Open now** toggle hides places that are currently closed.
 - **Map view** (🗺 in the header): a Google map above the list that draws **driving directions to your destination** plus result pins colored by category. **Tap a pin** to flash its row; **tap a row** to bounce its pin. Toggle it off to save data; fails gracefully (the list always works even if the map can't load).
   - Real road routing needs the **Directions API** enabled in Google Cloud (same project/key). If it's not enabled, the map falls back to a straight line to the destination — enable it for turn-by-turn route shapes.
 - **Settings** live behind the **☰ menu** in the header; the filter row holds only the category chips so they stay on one line (they scroll sideways on very narrow/folded screens).
 - **Recenter button** (⌖) on the map snaps back to your current location.
 - **Address validation**: Destination, Home, and new Favorites are checked against Google as you enter them — you get a ✓ with the matched place name, or a "not found" warning (favorites that don't resolve aren't added).
-- **How to use + About** sections in the ☰ menu.
+- **How to use + About** sections in the ☰ menu; numeric tuners (rating, reviews, detour, range) are tap **steppers** under a collapsed "Fine-tuning" section (no sliders to catch while scrolling).
 - **ETA + arrival time** in the header when a destination is set (driving time and clock arrival, from the Directions route).
 - **Share** button on each row — opens the phone's share sheet with the place name + a Maps link (copies the link as a fallback).
 - **Proximity buzz** (opt-in, ☰ menu): vibrates and shows a toast when a ≥4.5★ food/coffee spot is within 1 mile (Android supports the vibration).

@@ -167,10 +167,18 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
 .recenter svg { width: 24px; height: 24px; }
 .recenter:active { opacity: .7; }
 
-/* Sort + Open-now controls row */
-#controls {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+/* Sort + Open-now controls */
+#controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.controls-row { display: flex; align-items: center; gap: 8px; }
+.time-row { gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.time-row::-webkit-scrollbar { display: none; }
+.time-label { font-size: 14px; font-weight: 600; color: var(--label-2); flex: 0 0 auto; }
+.time-btn {
+  flex: 0 0 auto; border: 0; background: var(--fill); color: var(--label);
+  font-size: 14px; font-weight: 600; padding: 8px 12px; border-radius: 9px; cursor: pointer; transition: .15s;
 }
+.time-btn:active { opacity: .6; }
+.time-btn.active { background: var(--blue); color: #fff; }
 .sort-seg {
   display: flex; background: var(--fill); border-radius: 10px; padding: 3px; flex: 1;
 }
@@ -269,6 +277,7 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
   flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
 .trail .away { font-size: 15px; font-weight: 600; color: var(--label-2); letter-spacing: -.02em; }
+.trail .eta { font-size: 13px; font-weight: 700; color: var(--blue); margin-top: -2px; }
 .trail-btns { display: flex; align-items: center; gap: 8px; }
 .dirs {
   width: 50px; height: 50px; border-radius: 50%;
@@ -306,6 +315,21 @@ main { flex: 1; overflow-y: auto; padding: 6px 16px 140px; }
   font-size: 16px; font-weight: 600; cursor: pointer;
 }
 .linkbtn:active { opacity: .6; }
+
+/* Stepper controls (replace sliders — no drag to catch while scrolling) */
+.steppers-list { margin-top: 6px; }
+.steppers-list .field { margin-bottom: 18px; }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stepper-label { font-weight: 600; font-size: 16px; }
+.stepper-ctl {
+  display: flex; align-items: center; background: var(--fill); border-radius: 12px; flex: 0 0 auto;
+}
+.step-btn {
+  width: 48px; height: 46px; border: 0; background: transparent; color: var(--blue);
+  font-size: 26px; font-weight: 600; line-height: 1; cursor: pointer; display: grid; place-items: center;
+}
+.step-btn:active { opacity: .45; }
+.stepper-val { min-width: 66px; text-align: center; font-size: 16px; font-weight: 700; }
 
 /* ---------- Empty / welcome ---------- */
 .empty {

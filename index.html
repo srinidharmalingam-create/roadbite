@@ -53,12 +53,21 @@
     <div id="quick-dest" class="quick hidden"></div>
     <div id="heading-banner" class="hidden"></div>
     <div id="controls" class="hidden">
-      <div class="sort-seg" id="sort-seg">
-        <button class="sort-btn active" data-sort="best">Best</button>
-        <button class="sort-btn" data-sort="closest">Closest</button>
-        <button class="sort-btn" data-sort="cheapest">Cheapest</button>
+      <div class="controls-row">
+        <div class="sort-seg" id="sort-seg">
+          <button class="sort-btn active" data-sort="best">Best</button>
+          <button class="sort-btn" data-sort="closest">Closest</button>
+          <button class="sort-btn" data-sort="cheapest">Cheapest</button>
+        </div>
+        <button id="opennow-toggle" class="chip">Open now</button>
       </div>
-      <button id="opennow-toggle" class="chip">Open now</button>
+      <div class="controls-row time-row" id="time-seg">
+        <span class="time-label">⏱ Reach in</span>
+        <button class="time-btn active" data-min="0">Any</button>
+        <button class="time-btn" data-min="15">15 min</button>
+        <button class="time-btn" data-min="30">30 min</button>
+        <button class="time-btn" data-min="60">1 hr</button>
+      </div>
     </div>
     <ul id="results"></ul>
     <div id="empty" class="empty hidden"></div>
@@ -115,35 +124,17 @@
         <span>Buzz me when a great stop (≥4.5★) is within 1 mi</span>
       </label>
 
-      <hr />
-
-      <label class="field">
-        <span>Minimum rating: <b id="rating-val">4.0</b>★</span>
-        <input id="rating" type="range" min="0" max="5" step="0.1" value="4.0" />
-        <small>Applies to food & coffee. Gas and EV are ranked by proximity.</small>
-      </label>
-
-      <label class="field">
-        <span>Minimum reviews: <b id="reviews-val">50</b></span>
-        <input id="reviews" type="range" min="0" max="500" step="10" value="50" />
-      </label>
-
-      <label class="field">
-        <span>Max detour off route: <b id="detour-val">5</b> mi</span>
-        <input id="detour" type="range" min="0.5" max="20" step="0.5" value="5" />
-      </label>
-
-      <label class="field">
-        <span>Look-ahead distance: <b id="ahead-val">25</b> mi</span>
-        <input id="ahead" type="range" min="2" max="50" step="1" value="25" />
-      </label>
-
       <label class="field row">
         <input id="ahead-only" type="checkbox" checked />
         <span>Only show places ahead of me</span>
       </label>
 
       <hr />
+
+      <details>
+        <summary>Fine-tuning (ratings, detour, range)</summary>
+        <div id="stepper-list" class="steppers-list"></div>
+      </details>
       <details>
         <summary>How to use</summary>
         <ol class="help">

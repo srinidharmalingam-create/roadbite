@@ -124,6 +124,7 @@ const settings = {
   favorites: [],        // saved favorite destination strings
   sort: 'best',         // 'best' | 'closest' | 'cheapest'
   openNowOnly: false,
+  timeWindow: 0,        // minutes; 0 = any, else only show stops reachable within N min
   showMap: true,
   alertNearby: false,   // buzz when a top pick is coming up
   starbucksOnly: false,
@@ -552,6 +553,15 @@ function rankPlace(p) {
   const detour = directed ? cross * 2 : null;  // off the route and back
   const straight = haversineMi(state.pos, loc);
 
+  // Estimated minutes to reach it: drive along the route to the nearest point, then
+  // one-way off the road. Uses current speed (falls back to ~50 mph when stopped/slow).
+  const speed = (state.speedMph != null && state.speedMph > 8) ? state.speedMph : 50;
+  const reachMiles = Math.max(0, along) + (directed ? cross : 0);
+  const etaMin = Math.round(reachMiles / speed * 60);
+
+  // "Within N minutes" window (e.g. "can we eat in 30 minutes?").
+  if (settings.timeWindow && etaMin > settings.timeWindow) return null;
+
   // Score: lower is better. Reward rating (food/coffee), penalize detour & distance.
   const ratingPenalty = ratedKind ? (5 - rating) * 4 : 6;
   const detourPenalty = (detour ?? straight) * 3;
@@ -568,7 +578,7 @@ function rankPlace(p) {
 
   return {
     id: p.id, name: p.displayName, loc, rating, reviews, kind,
-    isCoffee: kind === 'coffee', along, detour, straight, openNow, score,
+    isCoffee: kind === 'coffee', along, detour, straight, etaMin, openNow, score,
     city: extractCity(p.addressComponents),
     typeLabel: humanizeType(p, kind),
     fuelPrice: fuel ? fuel.label : '',
@@ -693,6 +703,7 @@ function render() {
       </div>
       <div class="trail">
         <span class="away">${fmtMi(r.straight)}</span>
+        ${r.etaMin != null ? `<span class="eta">~${r.etaMin} min</span>` : ''}
         <div class="trail-btns">
           <button class="share" aria-label="Share ${escapeHtml(r.name)}">${SVG.share}</button>
           <button class="dirs" aria-label="Directions to ${escapeHtml(r.name)}">${SVG.nav}</button>
@@ -914,14 +925,49 @@ function startSim() {
   state.simTimer = setInterval(tick, 4000);
 }
 
+// Numeric tuners rendered as tap steppers (no sliders to drag while scrolling).
+const STEPPERS = [
+  { key: 'minRating', label: 'Minimum rating', min: 0, max: 5, step: 0.5, fmt: v => v.toFixed(1) + '★', note: 'Applies to food & coffee. Gas & EV rank by proximity.' },
+  { key: 'minReviews', label: 'Minimum reviews', min: 0, max: 500, step: 25, fmt: v => String(v) },
+  { key: 'maxDetour', label: 'Max detour off route', min: 0.5, max: 20, step: 0.5, fmt: v => v + ' mi' },
+  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 50, step: 5, fmt: v => v + ' mi' },
+];
+
+function buildSteppers() {
+  const wrap = $('#stepper-list');
+  wrap.innerHTML = '';
+  for (const s of STEPPERS) {
+    const row = document.createElement('div');
+    row.className = 'field';
+    row.innerHTML = `
+      <div class="stepper">
+        <span class="stepper-label">${s.label}</span>
+        <div class="stepper-ctl">
+          <button type="button" class="step-btn" aria-label="Decrease ${s.label}">−</button>
+          <span class="stepper-val"></span>
+          <button type="button" class="step-btn" aria-label="Increase ${s.label}">+</button>
+        </div>
+      </div>${s.note ? `<small>${s.note}</small>` : ''}`;
+    const valEl = row.querySelector('.stepper-val');
+    const draw = () => valEl.textContent = s.fmt(settings[s.key]);
+    draw();
+    const btns = row.querySelectorAll('.step-btn');
+    const change = dir => {
+      let v = settings[s.key] + dir * s.step;
+      v = parseFloat(Math.min(s.max, Math.max(s.min, v)).toFixed(2));
+      settings[s.key] = v; saveSettings(); draw();
+      if (state.pos) search();
+    };
+    btns[0].addEventListener('click', () => change(-1));
+    btns[1].addEventListener('click', () => change(1));
+    wrap.appendChild(row);
+  }
+}
+
 // ---------- Settings UI ----------
 function bindSettings() {
   const map = [
     ['#api-key', 'apiKey', 'value', v => v.trim()],
-    ['#rating', 'minRating', 'value', parseFloat, '#rating-val', v => v.toFixed(1)],
-    ['#reviews', 'minReviews', 'value', v => parseInt(v, 10), '#reviews-val'],
-    ['#detour', 'maxDetour', 'value', parseFloat, '#detour-val'],
-    ['#ahead', 'lookAhead', 'value', parseFloat, '#ahead-val'],
     ['#ahead-only', 'aheadOnly', 'checked', v => v],
     ['#starbucks-only', 'starbucksOnly', 'checked', v => v],
     ['#alert-nearby', 'alertNearby', 'checked', v => v],
@@ -936,8 +982,9 @@ function bindSettings() {
       saveSettings();
     });
   }
+  buildSteppers();
   // Re-run search when filters that affect ranking change & we have a fix.
-  ['#rating', '#reviews', '#detour', '#ahead', '#ahead-only', '#starbucks-only'].forEach(sel =>
+  ['#ahead-only', '#starbucks-only'].forEach(sel =>
     $(sel).addEventListener('change', () => state.pos && search()));
 
   $('#api-key').addEventListener('change', () => {
@@ -1083,6 +1130,18 @@ function setupControls() {
     openBtn.classList.toggle('active', settings.openNowOnly);
     saveSettings();
     if (state.pos) search();
+  });
+
+  // "Reach in" time window — show only stops you can get to within N minutes.
+  document.querySelectorAll('#time-seg .time-btn').forEach(btn => {
+    const mins = parseInt(btn.dataset.min, 10);
+    btn.classList.toggle('active', settings.timeWindow === mins);
+    btn.addEventListener('click', () => {
+      settings.timeWindow = mins;
+      document.querySelectorAll('#time-seg .time-btn').forEach(b => b.classList.toggle('active', b === btn));
+      saveSettings();
+      if (state.pos) search();
+    });
   });
 }
 
