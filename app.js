@@ -586,7 +586,7 @@ function rankPlace(p) {
   if (ratedKind && rating < settings.minRating) return null;
   if (ratedKind && reviews < settings.minReviews) return null;
 
-  if (state.starbucksOnly && kind === 'coffee' && !/starbucks/i.test(p.displayName)) return null;
+  if (settings.starbucksOnly && kind === 'coffee' && !/starbucks/i.test(p.displayName)) return null;
 
   // Decide "ahead vs already passed", plus how far ahead (along) and off-route (cross).
   // Best: project onto the actual route polyline. Fallback: bearing relative to heading.
