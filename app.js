@@ -78,6 +78,35 @@ function projectToPath(pos, path, cum) {
   return best;
 }
 
+// The {lat,lng} at a given cumulative distance (miles) along a path.
+function pointAlongPath(path, cum, target) {
+  const total = cum[cum.length - 1];
+  const d = clamp(target, 0, total);
+  for (let i = 0; i < path.length - 1; i++) {
+    if (cum[i + 1] >= d) {
+      const seg = cum[i + 1] - cum[i] || 1;
+      const t = (d - cum[i]) / seg;
+      return { lat: path[i].lat + (path[i + 1].lat - path[i].lat) * t,
+               lng: path[i].lng + (path[i + 1].lng - path[i].lng) * t };
+    }
+  }
+  return path[path.length - 1];
+}
+
+// Destination point distMi away from origin along a compass bearing (degrees).
+function destPoint(origin, bearingDeg, distMi) {
+  const d = distMi / R_MI, br = toRad(bearingDeg), lat1 = toRad(origin.lat), lng1 = toRad(origin.lng);
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(br));
+  const lng2 = lng1 + Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(lat1),
+                                 Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+  return { lat: toDeg(lat2), lng: toDeg(lng2) };
+}
+
+// Speed used for time estimates: real GPS speed when moving, else a highway default.
+function speedEstimate() {
+  return (state.speedMph != null && state.speedMph > 8) ? state.speedMph : 50;
+}
+
 // What Google Places type(s) each category maps to.
 const CATEGORY_TYPES = {
   food: ['restaurant'],            // replaced by chosen cuisines when any are selected
@@ -366,9 +395,28 @@ async function search() {
   const cats = settings.categories;
   if (!cats.length) { showEmpty('Pick at least one category above (Food, Coffee, Gas, EV).', '🧭'); return; }
 
-  // Google caps nearby radius at 50km (~31mi). Use look-ahead, capped.
-  const radiusMeters = Math.min(settings.lookAhead, 31) * 1609.34;
-  const center = { lat: state.pos.lat, lng: state.pos.lng };
+  // Our current progress along the route (if any) — the cutoff for "ahead".
+  state.userAlong = (state.routePath && state.routeCum)
+    ? projectToPath(state.pos, state.routePath, state.routeCum).along : null;
+
+  // Where to search. Normally around us. But with a "reach in N min" window we look
+  // AROUND the point ~N minutes ahead on the route — Google's radius (≤31mi) can't
+  // otherwise reach far enough, which is why it used to only show nearby places.
+  let center = { lat: state.pos.lat, lng: state.pos.lng };
+  let radiusMi = Math.min(settings.lookAhead, 31);
+  state.aheadLimitMiles = settings.lookAhead;
+
+  if (settings.timeWindow > 0) {
+    const targetMi = speedEstimate() * settings.timeWindow / 60;   // miles you'll cover in N min
+    if (state.routePath && state.routeCum && state.userAlong != null) {
+      center = pointAlongPath(state.routePath, state.routeCum, state.userAlong + targetMi);
+    } else if (effectiveHeading() != null) {
+      center = destPoint(state.pos, effectiveHeading(), targetMi);
+    }
+    radiusMi = clamp(targetMi * 0.6, 6, 31);     // a band around the future point
+    state.aheadLimitMiles = targetMi + radiusMi; // let rankPlace keep these far-ahead stops
+  }
+  const radiusMeters = radiusMi * 1609.34;
   const fields = ['displayName', 'location', 'rating', 'userRatingCount',
                   'businessStatus', 'regularOpeningHours', 'primaryType',
                   'primaryTypeDisplayName', 'addressComponents', 'id'];
@@ -400,10 +448,6 @@ async function search() {
   for (const g of groups) for (const p of g) {
     if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
   }
-
-  // Our current progress along the route (if we have one) — the cutoff for "ahead".
-  state.userAlong = (state.routePath && state.routeCum)
-    ? projectToPath(state.pos, state.routePath, state.routeCum).along : null;
 
   state.results = sortResults(merged.map(rankPlace).filter(Boolean)).slice(0, 40);
   render();
@@ -538,16 +582,19 @@ function rankPlace(p) {
     directed = false;
   }
 
+  // How far ahead we'll accept: the look-ahead distance, or further when a time window
+  // is active (so "reach in 30 min / 1 hr" can surface places well down the road).
+  const aheadLimit = state.aheadLimitMiles || settings.lookAhead;
   if (directed) {
     if (settings.aheadOnly && !ahead) return null;   // drop anything already passed
     if (cross > settings.maxDetour) return null;
-    if (along > settings.lookAhead) return null;
+    if (along > aheadLimit) return null;
     if (state.destCoords) {
       const distDest = haversineMi(state.pos, state.destCoords);
       if (along > distDest + 5) return null;          // don't suggest past the destination
     }
   } else {
-    if (along > settings.lookAhead) return null;
+    if (along > aheadLimit) return null;
   }
 
   const detour = directed ? cross * 2 : null;  // off the route and back
@@ -555,12 +602,12 @@ function rankPlace(p) {
 
   // Estimated minutes to reach it: drive along the route to the nearest point, then
   // one-way off the road. Uses current speed (falls back to ~50 mph when stopped/slow).
-  const speed = (state.speedMph != null && state.speedMph > 8) ? state.speedMph : 50;
   const reachMiles = Math.max(0, along) + (directed ? cross : 0);
-  const etaMin = Math.round(reachMiles / speed * 60);
+  const etaMin = Math.round(reachMiles / speedEstimate() * 60);
 
-  // "Within N minutes" window (e.g. "can we eat in 30 minutes?").
-  if (settings.timeWindow && etaMin > settings.timeWindow) return null;
+  // "Reach in N minutes" window (e.g. "can we eat in 30 minutes?"). Small slack so a
+  // spot a couple of minutes past the mark still shows.
+  if (settings.timeWindow && etaMin > settings.timeWindow + 5) return null;
 
   // Score: lower is better. Reward rating (food/coffee), penalize detour & distance.
   const ratingPenalty = ratedKind ? (5 - rating) * 4 : 6;
