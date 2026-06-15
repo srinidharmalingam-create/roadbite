@@ -1187,6 +1187,10 @@ function setupControls() {
       settings.timeWindow = mins;
       document.querySelectorAll('#time-seg .time-btn').forEach(b => b.classList.toggle('active', b === btn));
       saveSettings();
+      // Needs a direction to look ahead: a destination, or movement (GPS heading).
+      if (mins > 0 && !state.destCoords && state.heading == null) {
+        toast('Set a destination or start driving to find stops ' + mins + ' min ahead.');
+      }
       if (state.pos) search();
     });
   });
