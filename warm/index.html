@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbf3ec" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#19120e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Hino's RoadBite" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="../icon-180.png" />
+  <link rel="stylesheet" href="../style.css" />
+  <link rel="stylesheet" href="warm.css" />
+  <title>RoadBite — Warm</title>
+</head>
+<body>
+  <header id="status-bar">
+    <div class="brand">
+      <span class="logo">🚗</span>
+      <span class="title">Hino's RoadBite</span>
+    </div>
+    <div class="header-actions">
+      <div id="gps" class="gps off">
+        <span class="dot"></span>
+        <span id="gps-text">GPS off</span>
+      </div>
+      <button id="map-toggle" class="icon-btn" aria-label="Toggle map">🗺</button>
+      <button id="menu-btn" class="icon-btn" aria-label="Menu">☰</button>
+    </div>
+  </header>
+
+  <nav id="filters">
+    <div class="cats" id="cat-list">
+      <button class="cat-chip active" data-cat="food"><span>🍔</span> Food</button>
+      <button class="cat-chip active" data-cat="coffee"><span>☕</span> Coffee</button>
+      <button class="cat-chip" data-cat="gas"><span>⛽</span> Gas</button>
+      <button class="cat-chip" data-cat="ev"><span>⚡</span> EV</button>
+    </div>
+  </nav>
+
+  <main>
+    <div id="map-wrap" class="map-wrap hidden">
+      <div id="map" class="map"></div>
+      <button id="recenter-btn" class="recenter" aria-label="Recenter on my location">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="6"/>
+          <line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/>
+          <line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+    </div>
+    <div id="quick-dest" class="quick hidden"></div>
+    <div id="heading-banner" class="hidden"></div>
+    <div id="controls" class="hidden">
+      <div class="controls-row">
+        <div class="sort-seg" id="sort-seg">
+          <button class="sort-btn active" data-sort="best">Best</button>
+          <button class="sort-btn" data-sort="closest">Closest</button>
+          <button class="sort-btn" data-sort="cheapest">Cheapest</button>
+        </div>
+        <button id="opennow-toggle" class="chip">Open now</button>
+      </div>
+      <div class="controls-row time-row" id="time-seg">
+        <span class="time-label">⏱ Reach in</span>
+        <button class="time-btn active" data-min="0">Any</button>
+        <button class="time-btn" data-min="15">15 min</button>
+        <button class="time-btn" data-min="30">30 min</button>
+        <button class="time-btn" data-min="60">1 hr</button>
+      </div>
+    </div>
+    <ul id="results"></ul>
+    <div id="empty" class="empty hidden"></div>
+  </main>
+
+  <button id="start-btn" class="primary">Start driving</button>
+
+  <!-- Settings sheet -->
+  <div id="settings" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>Settings</h2>
+
+      <label class="field">
+        <span>Google Places API key</span>
+        <input id="api-key" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+        <small>Stored only on this device. Needs Maps JavaScript API + Places API (New) enabled.</small>
+      </label>
+
+      <label class="field">
+        <span>Destination <span id="dest-status" class="muted"></span></span>
+        <input id="dest" type="text" placeholder="e.g. Lewiston, ME" autocomplete="off" />
+        <small>Sets your travel direction toward this place. Leave blank to use your live GPS heading.</small>
+      </label>
+
+      <label class="field">
+        <span>🏠 Home <span id="home-status" class="muted"></span></span>
+        <input id="home" type="text" placeholder="e.g. Philadelphia, PA" autocomplete="off" />
+        <small>Appears as a one-tap destination on the home screen.</small>
+      </label>
+
+      <div class="field">
+        <span>⭐ Favorite destinations</span>
+        <div id="fav-list" class="favs"></div>
+        <div class="fav-add">
+          <input id="fav-input" type="text" placeholder="Add a place…" autocomplete="off" />
+          <button id="fav-add-btn" type="button" class="chip">Add</button>
+        </div>
+        <small id="fav-msg">Saved places show as one-tap chips at the top of the home screen.</small>
+      </div>
+
+      <div class="field">
+        <span>Cuisines <span class="muted">(food category)</span></span>
+        <div id="cuisine-list" class="cuisines"></div>
+        <small>Pick one or more to narrow restaurants. None selected = all restaurants.</small>
+      </div>
+
+      <label class="field row">
+        <input id="starbucks-only" type="checkbox" />
+        <span>Starbucks only (coffee)</span>
+      </label>
+
+      <label class="field row">
+        <input id="alert-nearby" type="checkbox" />
+        <span>Buzz me when a great stop (≥4.5★) is within 1 mi</span>
+      </label>
+
+      <label class="field row">
+        <input id="units-km" type="checkbox" />
+        <span>Show distances in kilometers</span>
+      </label>
+
+      <label class="field row">
+        <input id="ahead-only" type="checkbox" checked />
+        <span>Only show places ahead of me</span>
+      </label>
+
+      <hr />
+
+      <details>
+        <summary>Fine-tuning (ratings, detour, range)</summary>
+        <div id="stepper-list" class="steppers-list"></div>
+      </details>
+      <details>
+        <summary>How to use</summary>
+        <ol class="help">
+          <li>Pick what you want from the chips up top — <b>Food</b>, <b>Coffee</b>, <b>Gas</b>, <b>EV</b> (tap more than one).</li>
+          <li>Tap <b>Start driving</b> to use your live GPS. Results refresh as you drive.</li>
+          <li>Set a <b>Destination</b> (or tap <b>Home</b> / a ⭐ favorite) to aim suggestions that way — or leave it on <b>📍 Live</b> to follow your heading.</li>
+          <li>Use <b>Best / Closest / Cheapest</b> to re-sort, and <b>Open now</b> to hide closed spots.</li>
+          <li>Tap the blue arrow for turn-by-turn in Maps. Tap a row to find it on the 🗺 map (and a pin to find its row).</li>
+        </ol>
+      </details>
+
+      <details>
+        <summary>About</summary>
+        <p class="muted">Hino’s RoadBite finds well-rated restaurants, coffee, gas, and EV charging just ahead of you on a drive — ranked by how little they add to your route. Built for the Philadelphia ⇄ Lewiston, ME run. Place data and ratings from Google.</p>
+        <p class="muted">Version <span id="app-version">1.0</span> · <a href="https://github.com/srinidharmalingam-create/roadbite" target="_blank" rel="noopener">source</a></p>
+      </details>
+
+      <details>
+        <summary>Simulate driving (testing)</summary>
+        <p class="muted">Run a mock Philly→Lewiston drive without moving. Useful to try the app at your desk.</p>
+        <button id="sim-btn" class="chip">▶ Start simulation</button>
+      </details>
+
+      <button id="settings-done" class="primary">Done</button>
+    </div>
+  </div>
+
+  <!-- Destination prompt (shown on Start driving when none is set) -->
+  <div id="dest-prompt" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>Where are you headed?</h2>
+      <p class="muted">Pick a destination so suggestions stay strictly ahead on your route. You can change it anytime.</p>
+      <div id="prompt-quick" class="quick-prompt"></div>
+      <label class="field">
+        <input id="prompt-dest" type="text" placeholder="Enter a destination…" autocomplete="off" />
+      </label>
+      <button id="prompt-go" class="primary">Start driving</button>
+      <button id="prompt-skip" class="linkbtn">Skip — use my live heading</button>
+    </div>
+  </div>
+
+  <script src="../config.js"></script>
+  <script src="../app.js"></script>
+</body>
+</html>

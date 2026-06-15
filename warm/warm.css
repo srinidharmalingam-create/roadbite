@@ -1,0 +1,47 @@
+/* Warm & friendly palette — overrides the base variables (loaded after style.css).
+   Cream background, white cards, coral/amber food & coffee, friendly teal action. */
+:root {
+  --bg: #fbf3ec;
+  --bg-elev: #ffffff;
+  --card: #ffffff;
+  --label: #2b1d16;
+  --label-2: rgba(74,52,40,.62);
+  --label-3: rgba(74,52,40,.3);
+  --separator: rgba(120,80,55,.18);
+  --fill: rgba(184,116,72,.12);
+  --fill-2: rgba(184,116,72,.18);
+  --blue: #0f8c66;          /* friendly teal action accent */
+  --green: #2e9e58;
+  --red: #d7402f;
+  --orange: #e8703a;        /* food */
+  --brown: #b07b4f;         /* coffee */
+  --gas: #8a6ad9;
+  --ev: #1fa7a0;
+  --star: #e8a317;
+  --seg-sel: #ffffff;
+  --header-bg: rgba(251,243,236,.82);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #19120e;
+    --bg-elev: #241a14;
+    --card: #241a14;
+    --label: #fbefe7;
+    --label-2: rgba(245,225,210,.62);
+    --label-3: rgba(245,225,210,.32);
+    --separator: rgba(120,90,70,.6);
+    --fill: rgba(220,160,110,.16);
+    --fill-2: rgba(220,160,110,.26);
+    --blue: #2fb78f;
+    --green: #34c759;
+    --red: #ff6a5a;
+    --orange: #ff9f5a;
+    --brown: #c9966b;
+    --gas: #9a86e6;
+    --ev: #45cfc0;
+    --star: #ffcf5c;
+    --seg-sel: #4a3a2e;
+    --header-bg: rgba(36,26,20,.82);
+  }
+}
