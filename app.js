@@ -431,25 +431,36 @@ async function search() {
                   'primaryTypeDisplayName', 'addressComponents', 'id'];
 
   // One search per selected category so each is well represented in the results.
+  // If a request fails (e.g. an optional "atmosphere" field isn't accepted), retry
+  // once WITHOUT the optional fields so a single bad field can't wipe out results.
+  let searchErr = null;
+  state.disabledFields = state.disabledFields || new Set();   // optional fields that errored this session
   const tasks = cats.map(cat => {
     const includedTypes = (cat === 'food' && settings.cuisines.length)
       ? settings.cuisines.slice()
       : CATEGORY_TYPES[cat];
-    const catFields = fields.slice();
-    if (cat === 'gas') catFields.push('fuelOptions');         // fuel prices
-    if (cat === 'ev') catFields.push('evChargeOptions');      // charger speed/plugs
-    if (cat === 'food' || cat === 'coffee') catFields.push('takeout');  // grab-and-go
-    return Place.searchNearby({
-      fields: catFields, locationRestriction: { center, radius: radiusMeters }, includedTypes,
+    const extra = [];
+    if (cat === 'gas') extra.push('fuelOptions');             // fuel prices
+    if (cat === 'ev') extra.push('evChargeOptions');          // charger speed/plugs
+    if (cat === 'food' || cat === 'coffee') extra.push('takeout');  // grab-and-go
+    const useExtra = extra.filter(f => !state.disabledFields.has(f));
+    const run = flds => Place.searchNearby({
+      fields: flds, locationRestriction: { center, radius: radiusMeters }, includedTypes,
       maxResultCount: 20, rankPreference: SearchNearbyRankPreference.DISTANCE,
-    }).then(r => r.places || []).catch(() => []);
+    }).then(r => r.places || []);
+    return run(fields.concat(useExtra)).catch(err => {
+      searchErr = err;
+      useExtra.forEach(f => state.disabledFields.add(f));     // don't retry these this session
+      console.warn('searchNearby failed for', cat, '— retrying without optional fields:', err && err.message);
+      return run(fields).catch(e2 => { searchErr = e2; return []; });
+    });
   });
 
   let groups;
   try {
     groups = await Promise.all(tasks);
   } catch (e) {
-    showEmpty('Search failed: ' + e.message);
+    showEmpty('Search failed: ' + e.message, '⚠️');
     return;
   }
 
@@ -460,6 +471,21 @@ async function search() {
   }
 
   state.results = sortResults(merged.map(rankPlace).filter(Boolean)).slice(0, 40);
+
+  // Be explicit about WHY the list is empty instead of silently showing nothing.
+  if (!state.results.length) {
+    if (state.map) updateMapMarkers();
+    maybeRefreshRoute();
+    if (!merged.length && searchErr) {
+      showEmpty('Google Places error: ' + (searchErr.message || searchErr) +
+                '\nTap ⚙︎ to check your key, or try again.', '⚠️');
+    } else if (merged.length) {
+      showEmpty('Found places nearby, but your filters hid them all.\nIn ⚙︎ try a lower Minimum rating, turn off “Prefer quick stops,” or raise Max detour.', '🔧');
+    } else {
+      showEmpty('No matching spots ahead yet. Loosen filters in ⚙︎ or keep driving.');
+    }
+    return;
+  }
   render();
 }
 
