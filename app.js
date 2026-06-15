@@ -995,10 +995,10 @@ function startSim() {
 
 // Numeric tuners rendered as tap steppers (no sliders to drag while scrolling).
 const STEPPERS = [
-  { key: 'minRating', label: 'Minimum rating', min: 0, max: 5, step: 0.5, fmt: v => v.toFixed(1) + '★', note: 'Applies to food & coffee. Gas & EV rank by proximity.' },
+  { key: 'minRating', label: 'Minimum rating', min: 0, max: 5, step: 0.1, fmt: v => v.toFixed(1) + '★', note: 'Applies to food & coffee. Gas & EV rank by proximity.' },
   { key: 'minReviews', label: 'Minimum reviews', min: 0, max: 500, step: 25, fmt: v => String(v) },
   { key: 'maxDetour', label: 'Max detour off route', min: 0.5, max: 20, step: 0.5, fmt: v => fmtMi(v) },
-  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 50, step: 5, fmt: v => fmtMi(v) },
+  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 100, step: 5, fmt: v => fmtMi(v) },
 ];
 
 function buildSteppers() {
