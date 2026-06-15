@@ -1048,7 +1048,6 @@ function bindSettings() {
   const map = [
     ['#api-key', 'apiKey', 'value', v => v.trim()],
     ['#ahead-only', 'aheadOnly', 'checked', v => v],
-    ['#starbucks-only', 'starbucksOnly', 'checked', v => v],
     ['#alert-nearby', 'alertNearby', 'checked', v => v],
   ];
   for (const [sel, key, prop, parse, labelSel, fmt] of map) {
@@ -1063,7 +1062,7 @@ function bindSettings() {
   }
   buildSteppers();
   // Re-run search when filters that affect ranking change & we have a fix.
-  ['#ahead-only', '#starbucks-only'].forEach(sel =>
+  ['#ahead-only'].forEach(sel =>
     $(sel).addEventListener('change', () => state.pos && search()));
 
   $('#api-key').addEventListener('change', () => {
@@ -1188,6 +1187,7 @@ function buildCuisineChips() {
 function setupCategories() {
   document.querySelectorAll('#cat-list .cat-chip').forEach(btn => {
     const cat = btn.dataset.cat;
+    if (cat === 'coffee') { setupCoffeeChip(btn); return; }   // 3-state, handled below
     btn.classList.toggle('active', settings.categories.includes(cat));
     btn.addEventListener('click', () => {
       const i = settings.categories.indexOf(cat);
@@ -1196,6 +1196,38 @@ function setupCategories() {
       saveSettings();
       if (state.pos) search();
     });
+  });
+}
+
+// Coffee chip cycles through 3 states: off → Coffee (all) → Starbucks only → off.
+function coffeeState() {
+  if (!settings.categories.includes('coffee')) return 'off';
+  return settings.starbucksOnly ? 'starbucks' : 'coffee';
+}
+function setupCoffeeChip(btn) {
+  const label = btn.querySelector('.cl');
+  const draw = () => {
+    const s = coffeeState();
+    btn.classList.toggle('active', s !== 'off');
+    btn.classList.toggle('sbux', s === 'starbucks');
+    if (label) label.textContent = s === 'starbucks' ? 'Starbucks' : 'Coffee';
+  };
+  draw();
+  btn.addEventListener('click', () => {
+    const s = coffeeState();
+    if (s === 'off') {
+      if (!settings.categories.includes('coffee')) settings.categories.push('coffee');
+      settings.starbucksOnly = false;
+    } else if (s === 'coffee') {
+      settings.starbucksOnly = true;            // Coffee → Starbucks only
+    } else {
+      const i = settings.categories.indexOf('coffee');  // Starbucks → off
+      if (i >= 0) settings.categories.splice(i, 1);
+      settings.starbucksOnly = false;
+    }
+    draw();
+    saveSettings();
+    if (state.pos) search();
   });
 }
 

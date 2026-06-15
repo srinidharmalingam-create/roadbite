@@ -141,6 +141,7 @@ body {
 .cat-chip span { font-size: 18px; }
 .cat-chip:active { opacity: .6; }
 .cat-chip.active { background: var(--blue); color: #fff; }
+.cat-chip.sbux { background: #00704a; color: #fff; }   /* Starbucks green */
 .chip {
   border: 0; background: var(--fill); color: var(--blue);
   font-size: 19px; font-weight: 600; padding: 10px 14px; border-radius: 11px; cursor: pointer;

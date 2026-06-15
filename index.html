@@ -32,7 +32,7 @@
   <nav id="filters">
     <div class="cats" id="cat-list">
       <button class="cat-chip active" data-cat="food"><span>🍔</span> Food</button>
-      <button class="cat-chip active" data-cat="coffee"><span>☕</span> Coffee</button>
+      <button class="cat-chip active" data-cat="coffee"><span class="ci" aria-hidden="true">☕</span> <span class="cl">Coffee</span></button>
       <button class="cat-chip" data-cat="gas"><span>⛽</span> Gas</button>
       <button class="cat-chip" data-cat="ev"><span>⚡</span> EV</button>
     </div>
@@ -113,11 +113,6 @@
         <div id="cuisine-list" class="cuisines"></div>
         <small>Pick one or more to narrow restaurants. None selected = all restaurants.</small>
       </div>
-
-      <label class="field row">
-        <input id="starbucks-only" type="checkbox" />
-        <span>Starbucks only (coffee)</span>
-      </label>
 
       <label class="field row">
         <input id="alert-nearby" type="checkbox" />
