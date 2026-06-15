@@ -154,6 +154,7 @@ const settings = {
   sort: 'best',         // 'best' | 'closest' | 'cheapest'
   openNowOnly: false,
   timeWindow: 0,        // minutes; 0 = any, else only show stops reachable within N min
+  units: 'mi',          // 'mi' | 'km'
   showMap: true,
   alertNearby: false,   // buzz when a top pick is coming up
   starbucksOnly: false,
@@ -304,6 +305,7 @@ async function refreshRoute(fit) {
     const res = await new routes.DirectionsService().route({
       origin: state.pos, destination: state.destCoords,
       travelMode: google.maps.TravelMode.DRIVING,
+      unitSystem: settings.units === 'km' ? google.maps.UnitSystem.METRIC : google.maps.UnitSystem.IMPERIAL,
     });
     const leg = res.routes?.[0]?.legs?.[0];
     state.routeEta = leg?.duration ? { dur: leg.duration.text, dist: leg.distance?.text, sec: leg.duration.value } : null;
@@ -699,10 +701,14 @@ const SVG = {
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/></svg>',
 };
 
+// Format a distance (stored internally in miles) in the user's chosen units.
 function fmtMi(mi) {
   if (mi == null) return '—';
-  if (mi < 0.1) return '<0.1 mi';
-  return (mi < 10 ? mi.toFixed(1) : Math.round(mi)) + ' mi';
+  const km = settings.units === 'km';
+  const v = km ? mi * 1.60934 : mi;
+  const u = km ? 'km' : 'mi';
+  if (v < 0.1) return '<0.1 ' + u;
+  return (v < 10 ? v.toFixed(1) : Math.round(v)) + ' ' + u;
 }
 
 function fmtCount(n) {
@@ -976,8 +982,8 @@ function startSim() {
 const STEPPERS = [
   { key: 'minRating', label: 'Minimum rating', min: 0, max: 5, step: 0.5, fmt: v => v.toFixed(1) + '★', note: 'Applies to food & coffee. Gas & EV rank by proximity.' },
   { key: 'minReviews', label: 'Minimum reviews', min: 0, max: 500, step: 25, fmt: v => String(v) },
-  { key: 'maxDetour', label: 'Max detour off route', min: 0.5, max: 20, step: 0.5, fmt: v => v + ' mi' },
-  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 50, step: 5, fmt: v => v + ' mi' },
+  { key: 'maxDetour', label: 'Max detour off route', min: 0.5, max: 20, step: 0.5, fmt: v => fmtMi(v) },
+  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 50, step: 5, fmt: v => fmtMi(v) },
 ];
 
 function buildSteppers() {
@@ -1085,6 +1091,17 @@ function bindSettings() {
   };
   $('#fav-add-btn').addEventListener('click', addFav);
   $('#fav-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFav(); } });
+
+  // Units (mi/km) — display-only; everything is stored in miles internally.
+  const unitsEl = $('#units-km');
+  unitsEl.checked = settings.units === 'km';
+  unitsEl.addEventListener('change', () => {
+    settings.units = unitsEl.checked ? 'km' : 'mi';
+    saveSettings();
+    buildSteppers();        // refresh stepper labels
+    state.routeSig = null;  // refetch route so ETA distance comes back in new units
+    if (state.pos) search(); else { render(); updateHeadingBanner(); }
+  });
 
   buildCuisineChips();
 }

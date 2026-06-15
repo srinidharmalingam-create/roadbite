@@ -24,6 +24,7 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 - **Recenter button** (⌖) on the map snaps back to your current location.
 - **Address validation**: Destination, Home, and new Favorites are checked against Google as you enter them — you get a ✓ with the matched place name, or a "not found" warning (favorites that don't resolve aren't added).
 - **How to use + About** sections in the ☰ menu; numeric tuners (rating, reviews, detour, range) are tap **steppers** under a collapsed "Fine-tuning" section (no sliders to catch while scrolling).
+- **Units toggle** (☰ menu): show distances in **miles or kilometers** (affects every distance, the steppers, and the route ETA).
 - **ETA + arrival time** in the header when a destination is set (driving time and clock arrival, from the Directions route).
 - **Share** button on each row — opens the phone's share sheet with the place name + a Maps link (copies the link as a fallback).
 - **Proximity buzz** (opt-in, ☰ menu): vibrates and shows a toast when a ≥4.5★ food/coffee spot is within 1 mile (Android supports the vibration).
