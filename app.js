@@ -581,11 +581,17 @@ function rankPlace(p) {
   const kind = placeKind(p);
   const ratedKind = kind === 'food' || kind === 'coffee';
 
+  // A result must match a category you actually picked. Google's coffee search can
+  // return places (Wawa, McDonald's) that have a secondary "cafe" type but are really
+  // food/gas — this drops those unless that category is selected.
+  if (!settings.categories.includes(kind)) return null;
+
   if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') return null;
   // Rating/review thresholds apply to food & coffee only; gas/EV rank on proximity.
   if (ratedKind && rating < settings.minRating) return null;
   if (ratedKind && reviews < settings.minReviews) return null;
 
+  // Starbucks-only: drop any coffee place that isn't Starbucks.
   if (settings.starbucksOnly && kind === 'coffee' && !/starbucks/i.test(p.displayName)) return null;
 
   // Decide "ahead vs already passed", plus how far ahead (along) and off-route (cross).
@@ -1323,4 +1329,4 @@ function init() {
 document.addEventListener('DOMContentLoaded', init);
 
 // Expose a few internals for testing in the preview harness.
-window.RoadBite = { state, settings, onPosition, search, startSim, render, renderQuickDest, sortResults, updateHeadingBanner, toast };
+window.RoadBite = { state, settings, onPosition, search, startSim, render, renderQuickDest, sortResults, updateHeadingBanner, toast, rankPlace };
