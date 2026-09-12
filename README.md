@@ -16,7 +16,9 @@ It's a installable web app (PWA) — no App Store, works on iPhone and Android.
 - **Home + Favorite destinations** (Settings): save a Home and any number of favorites; they appear as one-tap chips at the top of the home screen (plus a "📍 Live" chip to switch back to live heading).
 - **Gas prices** on gas-station rows (from Google's `fuelOptions`, where reported) and **EV charger speed + plug count** on charging rows (Google does not expose EV pricing).
 - **Sort**: Best (rating + detour + distance), Closest (distance from you), or Cheapest (gas price first).
-- **Reach in** time window: Any / 15 min / 30 min / 1 hr — answers "can we eat in 30 minutes?" by showing only stops you can get to within that time (each row shows an estimated `~N min`, based on your current speed and the route).
+- **Reach in** time window: Any / 15 min / 30 min / 1 hr / 2 hr / 3 hr — answers "can we eat in 30 minutes?" (or plan a stop 2–3 hours out on a long haul) by centering the search that far ahead on your route. Each row shows an estimated `~N min`.
+- **Rest** category (🅿️): highway rest areas / service plazas (Google `rest_stop`), ranked by proximity.
+- **Tap any result** to open a details sheet — photo, address, hours (today + all week), phone (tap to call), website, price, review snippets, and Directions/Share/Open-in-Maps — the kind of info you'd see in Google Maps.
 - **Open now** toggle hides places that are currently closed.
 - **Map view** (🗺 in the header): a Google map above the list that draws **driving directions to your destination** plus result pins colored by category. **Tap a pin** to flash its row; **tap a row** to bounce its pin. Toggle it off to save data; fails gracefully (the list always works even if the map can't load).
   - Real road routing needs the **Directions API** enabled in Google Cloud (same project/key). If it's not enabled, the map falls back to a straight line to the destination — enable it for turn-by-turn route shapes.

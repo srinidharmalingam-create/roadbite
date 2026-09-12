@@ -113,6 +113,7 @@ const CATEGORY_TYPES = {
   coffee: ['coffee_shop', 'cafe'],
   gas: ['gas_station'],
   ev: ['electric_vehicle_charging_station'],
+  rest: ['rest_stop'],   // highway rest areas / service plazas
 };
 
 // Cuisine chips (values are Google Places primary types).
@@ -237,7 +238,7 @@ async function ensurePlaces() {
 }
 
 // ---------- Map (optional, fails gracefully) ----------
-const KIND_COLORS = { food: '#ff9500', coffee: '#a2845e', gas: '#5856d6', ev: '#30b0c7' };
+const KIND_COLORS = { food: '#ff9500', coffee: '#a2845e', gas: '#5856d6', ev: '#30b0c7', rest: '#3f9e56' };
 
 async function ensureMap() {
   if (state.map) return state.map;
@@ -570,6 +571,7 @@ function placeKind(p) {
   const t = p.primaryType || '';
   if (t === 'gas_station') return 'gas';
   if (t === 'electric_vehicle_charging_station') return 'ev';
+  if (t === 'rest_stop') return 'rest';
   if (/coffee|cafe/.test(t) || /coffee|cafe|starbucks|dunkin/i.test(p.displayName)) return 'coffee';
   return 'food';
 }
@@ -711,6 +713,7 @@ function extractCity(components) {
 function humanizeType(p, kind) {
   if (kind === 'gas') return 'Gas station';
   if (kind === 'ev') return 'EV charging';
+  if (kind === 'rest') return 'Rest area';
   if (p.primaryTypeDisplayName) {
     return (p.primaryTypeDisplayName.text || p.primaryTypeDisplayName);
   }
@@ -731,6 +734,12 @@ const SVG = {
   ev: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2L4.5 13.4c-.4.5 0 1.3.6 1.3h5L9 21.3c-.1.8.9 1.2 1.4.6l8.6-11.4c.4-.5 0-1.3-.6-1.3h-5l1-6.5c.1-.8-.9-1.2-1.4-.6z"/></svg>',
   nav: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.6 3.4a1 1 0 0 0-1.1-.2L4 9.6c-1 .4-.9 1.8.1 2.1l6.3 1.9 1.9 6.3c.3 1 1.7 1.1 2.1.1l6.4-15.5a1 1 0 0 0-.2-1.1z"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/></svg>',
+  rest: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="6" width="18" height="2" rx="1"/><rect x="3" y="9" width="18" height="2.4" rx="1"/><rect x="4" y="11.4" width="2" height="6.6" rx="1"/><rect x="18" y="11.4" width="2" height="6.6" rx="1"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.6c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>',
+  web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
 };
 
 // Format a distance (stored internally in miles) in the user's chosen units.
@@ -798,7 +807,7 @@ function render() {
     li.dataset.id = r.id;
     li.querySelector('.dirs').addEventListener('click', (e) => { e.stopPropagation(); navigateTo(r); });
     li.querySelector('.share').addEventListener('click', (e) => { e.stopPropagation(); sharePlace(r); });
-    li.addEventListener('click', () => highlightPin(r));   // row -> pin
+    li.addEventListener('click', () => { highlightPin(r); openDetail(r); });   // tap row: pin + details
     els.results.appendChild(li);
   }
 
@@ -836,6 +845,106 @@ async function sharePlace(r) {
   } catch (_) { return; }  // user cancelled the share sheet
   try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Link copied'); }
   catch (_) { window.open(url, '_blank'); }
+}
+
+// ---------- Place details sheet ----------
+const PRICE = { FREE: 'Free', INEXPENSIVE: '$', MODERATE: '$$', EXPENSIVE: '$$$', VERY_EXPENSIVE: '$$$$' };
+const priceLabel = pl => PRICE[String(pl || '').replace('PRICE_LEVEL_', '')] || '';
+
+function openDetail(r) {
+  const inner = document.getElementById('detail-inner');
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${r.loc.lat},${r.loc.lng}&query_place_id=${encodeURIComponent(r.id)}`;
+  const ratingLine = r.rating > 0
+    ? `<span class="d-rating">★ ${r.rating.toFixed(1)}</span> <span class="muted">(${fmtCount(r.reviews)})</span>` : '';
+  // Base view (from what we already have) shows instantly; extra fields fill in async.
+  inner.innerHTML = `
+    <button class="detail-x" id="detail-x" aria-label="Close">${SVG.x}</button>
+    <div id="d-photo" class="d-photo hidden"></div>
+    <div class="d-head">
+      <span class="cat-icon ${r.kind}" style="background:${KIND_COLORS[r.kind] || '#ff9500'}">${SVG[r.kind] || SVG.food}</span>
+      <div style="flex:1;min-width:0;">
+        <h2 class="d-name">${escapeHtml(r.name)}</h2>
+        <div class="d-sub">${ratingLine}${r.typeLabel ? `<span class="mid">·</span>${escapeHtml(r.typeLabel)}` : ''}<span id="d-price"></span></div>
+      </div>
+    </div>
+    <div class="d-actions">
+      <button class="d-act primary" id="d-go">${SVG.nav}<span>Directions</span></button>
+      <button class="d-act" id="d-share">${SVG.share}<span>Share</span></button>
+      <a class="d-act" id="d-call" hidden>${SVG.phone}<span>Call</span></a>
+      <a class="d-act" id="d-web" hidden target="_blank" rel="noopener">${SVG.web}<span>Website</span></a>
+    </div>
+    <div id="d-meta" class="d-meta">
+      <div class="d-row"><span class="d-ic">${SVG.pin}</span><span id="d-addr" class="muted">${r.city ? escapeHtml(r.city) : 'Loading…'}</span></div>
+      <div class="d-row" id="d-hours-row" hidden><span class="d-ic">${SVG.clock}</span><span id="d-hours"></span></div>
+    </div>
+    <p id="d-summary" class="d-summary muted" hidden></p>
+    <div id="d-reviews" class="d-reviews"></div>
+    <a class="linkbtn" href="${mapsUrl}" target="_blank" rel="noopener">Open in Google Maps ↗</a>
+    <button class="primary" id="detail-done">Done</button>`;
+
+  document.getElementById('detail').classList.remove('hidden');
+  document.getElementById('detail-x').addEventListener('click', closeDetail);
+  document.getElementById('detail-done').addEventListener('click', closeDetail);
+  document.getElementById('d-go').addEventListener('click', () => navigateTo(r));
+  document.getElementById('d-share').addEventListener('click', () => sharePlace(r));
+
+  fillDetail(r).catch(() => {});
+}
+
+function closeDetail() { document.getElementById('detail').classList.add('hidden'); }
+
+async function fillDetail(r) {
+  if (!effectiveKey()) { const a = document.getElementById('d-addr'); if (a && !r.city) a.textContent = 'Details need an API key'; return; }
+  const lib = await ensurePlaces();
+  const place = new lib.Place({ id: r.id });
+  await place.fetchFields({ fields: [
+    'formattedAddress', 'nationalPhoneNumber', 'websiteURI', 'regularOpeningHours',
+    'photos', 'editorialSummary', 'priceLevel', 'reviews',
+  ] });
+  if (document.getElementById('detail').classList.contains('hidden')) return;  // user closed it
+
+  const addr = document.getElementById('d-addr');
+  if (addr && place.formattedAddress) addr.textContent = place.formattedAddress;
+  else if (addr && !r.city) addr.textContent = '';
+
+  const price = priceLabel(place.priceLevel);
+  if (price) document.getElementById('d-price').innerHTML = `<span class="mid">·</span>${price}`;
+
+  const call = document.getElementById('d-call');
+  if (call && place.nationalPhoneNumber) { call.href = 'tel:' + place.nationalPhoneNumber.replace(/[^0-9+]/g, ''); call.hidden = false; }
+
+  const web = document.getElementById('d-web');
+  if (web && place.websiteURI) { web.href = place.websiteURI; web.hidden = false; }
+
+  const hours = place.regularOpeningHours?.weekdayDescriptions;
+  if (hours && hours.length) {
+    document.getElementById('d-hours-row').hidden = false;
+    const today = (new Date().getDay() + 6) % 7;  // weekdayDescriptions start Monday
+    document.getElementById('d-hours').innerHTML =
+      `<b>${r.openNow == null ? '' : (r.openNow ? 'Open now' : 'Closed now') + ' · '}</b>` +
+      escapeHtml((hours[today] || hours[0]).replace(/^\w+:\s*/, '')) +
+      `<details class="d-hours-all"><summary>All hours</summary>${hours.map(h => escapeHtml(h)).join('<br>')}</details>`;
+  }
+
+  const sum = document.getElementById('d-summary');
+  const summaryText = typeof place.editorialSummary === 'string' ? place.editorialSummary : place.editorialSummary?.text;
+  if (sum && summaryText) { sum.textContent = summaryText; sum.hidden = false; }
+
+  try {
+    const uri = place.photos?.[0]?.getURI?.({ maxWidth: 900 });
+    if (uri) { const ph = document.getElementById('d-photo'); ph.style.backgroundImage = `url("${uri}")`; ph.classList.remove('hidden'); }
+  } catch (_) {}
+
+  const revs = (place.reviews || []).slice(0, 2);
+  if (revs.length) {
+    document.getElementById('d-reviews').innerHTML = revs.map(rv => {
+      const author = escapeHtml(rv.authorAttribution?.displayName || 'Google user');
+      const when = escapeHtml(rv.relativePublishTimeDescription || '');
+      const txt = escapeHtml((typeof rv.text === 'string' ? rv.text : rv.text?.text || '').slice(0, 240));
+      const stars = rv.rating ? '★'.repeat(Math.round(rv.rating)) : '';
+      return `<div class="d-review"><div class="d-review-top"><b>${author}</b><span class="d-review-stars">${stars}</span></div><div class="muted d-review-when">${when}</div><div class="d-review-text">${txt}</div></div>`;
+    }).join('');
+  }
 }
 
 // Brief bottom toast.
@@ -1318,6 +1427,7 @@ function init() {
   $('#prompt-skip').addEventListener('click', () => { state.destPromptDismissed = true; $('#dest-prompt').classList.add('hidden'); startTracking(); });
   $('#menu-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
+  $('#detail').addEventListener('click', e => { if (e.target.id === 'detail') closeDetail(); });
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 
   if (!effectiveKey()) showEmpty('Welcome to Hino’s RoadBite\n\nTap ⚙︎ to add your Google Places API key, then "Start driving".', '🚗');
