@@ -1,6 +1,6 @@
 /* App shell with offline fallback. Network-FIRST for our own files so code updates
    always reach the user when online; falls back to cache only when offline. */
-const CACHE = 'roadbite-v5';
+const CACHE = 'roadbite-v6';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './config.js', './manifest.webmanifest',
 ];

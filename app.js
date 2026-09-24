@@ -821,7 +821,9 @@ function showEmpty(msg, emoji) {
   els.results.innerHTML = '';
   els.empty.innerHTML = (emoji ? `<span class="big">${emoji}</span>` : '') + escapeHtml(msg);
   els.empty.classList.remove('hidden');
-  $('#controls').classList.add('hidden');
+  // Keep the controls (Reach in / sort / open-now) usable once we're driving, so you
+  // can widen the window when nothing is found. Hide them only on the welcome screen.
+  $('#controls').classList.toggle('hidden', !state.pos);
 }
 
 function escapeHtml(s) {
