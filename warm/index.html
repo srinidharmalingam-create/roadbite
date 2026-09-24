@@ -83,85 +83,91 @@
   <!-- Settings sheet -->
   <div id="settings" class="sheet hidden">
     <div class="sheet-inner">
-      <h2>Settings</h2>
+      <div class="settings-top">
+        <h2>Settings</h2>
+        <button id="settings-done-top" class="settings-done-btn">Done</button>
+      </div>
 
-      <label class="field">
-        <span>Google Places API key</span>
-        <input id="api-key" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false" />
-        <small>Stored only on this device. Needs Maps JavaScript API + Places API (New) enabled.</small>
-      </label>
-
-      <label class="field">
-        <span>Destination <span id="dest-status" class="muted"></span></span>
-        <input id="dest" type="text" placeholder="e.g. Lewiston, ME" autocomplete="off" />
-        <small>Sets your travel direction toward this place. Leave blank to use your live GPS heading.</small>
-      </label>
-
-      <label class="field">
-        <span>🏠 Home <span id="home-status" class="muted"></span></span>
-        <input id="home" type="text" placeholder="e.g. Philadelphia, PA" autocomplete="off" />
-        <small>Appears as a one-tap destination on the home screen.</small>
-      </label>
-
-      <div class="field">
-        <span>⭐ Favorite destinations</span>
-        <div id="fav-list" class="favs"></div>
-        <div class="fav-add">
-          <input id="fav-input" type="text" placeholder="Add a place…" autocomplete="off" />
-          <button id="fav-add-btn" type="button" class="chip">Add</button>
+      <div class="sec-label">Trip</div>
+      <div class="sec-card">
+        <div class="field">
+          <span>Destination <span id="dest-status" class="muted"></span></span>
+          <input id="dest" type="text" placeholder="e.g. Lewiston, ME" autocomplete="off" />
         </div>
-        <small id="fav-msg">Saved places show as one-tap chips at the top of the home screen.</small>
+        <div class="field">
+          <span>🏠 Home <span id="home-status" class="muted"></span></span>
+          <input id="home" type="text" placeholder="e.g. Philadelphia, PA" autocomplete="off" />
+        </div>
+        <div class="field">
+          <span>⭐ Favorites</span>
+          <div id="fav-list" class="favs"></div>
+          <div class="fav-add">
+            <input id="fav-input" type="text" placeholder="Add a place…" autocomplete="off" />
+            <button id="fav-add-btn" type="button" class="chip">Add</button>
+          </div>
+          <small id="fav-msg"></small>
+        </div>
+      </div>
+      <div class="sec-hint">Set a destination (or tap Home / a ⭐ favorite on the home screen) to aim suggestions ahead on your route.</div>
+
+      <div class="sec-label">Filters</div>
+      <div class="sec-card">
+        <div class="field">
+          <span>Cuisines <span class="muted">(food)</span></span>
+          <div id="cuisine-list" class="cuisines"></div>
+        </div>
+        <label class="setrow">
+          <span class="setrow-label">Only show places ahead of me</span>
+          <span class="switch"><input id="ahead-only" type="checkbox" checked /><span class="track"></span></span>
+        </label>
+        <label class="setrow">
+          <span class="setrow-label">Buzz me near a great stop <span class="muted">(≥4.5★, 1 mi)</span></span>
+          <span class="switch"><input id="alert-nearby" type="checkbox" /><span class="track"></span></span>
+        </label>
       </div>
 
-      <div class="field">
-        <span>Cuisines <span class="muted">(food category)</span></span>
-        <div id="cuisine-list" class="cuisines"></div>
-        <small>Pick one or more to narrow restaurants. None selected = all restaurants.</small>
+      <div class="sec-label">Display</div>
+      <div class="sec-card">
+        <label class="setrow">
+          <span class="setrow-label">Distances in kilometers</span>
+          <span class="switch"><input id="units-km" type="checkbox" /><span class="track"></span></span>
+        </label>
       </div>
 
-      <label class="field row">
-        <input id="alert-nearby" type="checkbox" />
-        <span>Buzz me when a great stop (≥4.5★) is within 1 mi</span>
-      </label>
+      <div class="sec-label">Fine-tuning</div>
+      <div class="sec-card" id="stepper-list"></div>
+      <div class="sec-hint">Rating &amp; reviews apply to food and coffee. Look-ahead is how far up the route to search.</div>
 
-      <label class="field row">
-        <input id="units-km" type="checkbox" />
-        <span>Show distances in kilometers</span>
-      </label>
-
-      <label class="field row">
-        <input id="ahead-only" type="checkbox" checked />
-        <span>Only show places ahead of me</span>
-      </label>
-
-      <hr />
-
-      <details>
-        <summary>Fine-tuning (ratings, detour, range)</summary>
-        <div id="stepper-list" class="steppers-list"></div>
-      </details>
-      <details>
-        <summary>How to use</summary>
-        <ol class="help">
-          <li>Pick what you want from the chips up top — <b>Food</b>, <b>Coffee</b>, <b>Gas</b>, <b>EV</b> (tap more than one).</li>
-          <li>Tap <b>Start driving</b> to use your live GPS. Results refresh as you drive.</li>
-          <li>Set a <b>Destination</b> (or tap <b>Home</b> / a ⭐ favorite) to aim suggestions that way — or leave it on <b>📍 Live</b> to follow your heading.</li>
-          <li>Use <b>Best / Closest / Cheapest</b> to re-sort, and <b>Open now</b> to hide closed spots.</li>
-          <li>Tap the blue arrow for turn-by-turn in Maps. Tap a row to find it on the 🗺 map (and a pin to find its row).</li>
-        </ol>
-      </details>
-
-      <details>
-        <summary>About</summary>
-        <p class="muted">Hino’s RoadBite finds well-rated restaurants, coffee, gas, and EV charging just ahead of you on a drive — ranked by how little they add to your route. Built for the Philadelphia ⇄ Lewiston, ME run. Place data and ratings from Google.</p>
-        <p class="muted">Version <span id="app-version">1.0</span> · <a href="https://github.com/srinidharmalingam-create/roadbite" target="_blank" rel="noopener">source</a></p>
-      </details>
-
-      <details>
-        <summary>Simulate driving (testing)</summary>
-        <p class="muted">Run a mock Philly→Lewiston drive without moving. Useful to try the app at your desk.</p>
-        <button id="sim-btn" class="chip">▶ Start simulation</button>
-      </details>
+      <div class="sec-label">More</div>
+      <div class="sec-card">
+        <details>
+          <summary>How to use</summary>
+          <ol class="help">
+            <li>Pick what you want from the chips up top — <b>Food</b>, <b>Coffee</b>, <b>Gas</b>, <b>EV</b>, <b>Rest</b> (tap more than one).</li>
+            <li>Tap <b>Start driving</b> to use your live GPS. Results refresh as you drive.</li>
+            <li>Set a <b>Destination</b> (or tap <b>Home</b> / a ⭐ favorite) to aim suggestions that way — or leave it on <b>📍 Live</b> to follow your heading.</li>
+            <li>Use <b>Best / Closest / Cheapest</b> to re-sort, <b>Reach in</b> to plan a stop N minutes/hours ahead, and <b>Open now</b> to hide closed spots.</li>
+            <li>Tap a result for full details. Tap the blue arrow for turn-by-turn in Maps.</li>
+          </ol>
+        </details>
+        <details>
+          <summary>About</summary>
+          <p class="muted">Hino’s RoadBite finds well-rated restaurants, coffee, gas, EV charging, and rest areas just ahead of you on a drive — ranked by how little they add to your route. Place data and ratings from Google.</p>
+          <p class="muted">Version <span id="app-version">1.1</span> · <a href="https://github.com/srinidharmalingam-create/roadbite" target="_blank" rel="noopener">source</a></p>
+        </details>
+        <details>
+          <summary>Simulate driving (testing)</summary>
+          <p class="muted">Run a mock Philly→Lewiston drive without moving. Useful to try the app at your desk.</p>
+          <button id="sim-btn" class="chip">▶ Start simulation</button>
+        </details>
+        <details>
+          <summary>Advanced · API key</summary>
+          <div class="field" style="padding-top:10px;">
+            <input id="api-key" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+            <small>A shared key is already built in. Enter your own only to override it on this device.</small>
+          </div>
+        </details>
+      </div>
 
       <button id="settings-done" class="primary">Done</button>
     </div>

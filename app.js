@@ -172,6 +172,7 @@ function loadSettings() {
     const s = JSON.parse(localStorage.getItem('roadbite') || '{}');
     Object.assign(settings, s);
   } catch (_) {}
+  settings.timeWindow = 0;   // "Reach in" always starts at Any each time the app opens
 }
 function saveSettings() {
   localStorage.setItem('roadbite', JSON.stringify(settings));
@@ -1121,10 +1122,10 @@ function startSim() {
 
 // Numeric tuners rendered as tap steppers (no sliders to drag while scrolling).
 const STEPPERS = [
-  { key: 'minRating', label: 'Minimum rating', min: 0, max: 5, step: 0.1, fmt: v => v.toFixed(1) + '★', note: 'Applies to food & coffee. Gas & EV rank by proximity.' },
+  { key: 'minRating', label: 'Minimum rating', min: 0, max: 5, step: 0.1, fmt: v => v.toFixed(1) + '★' },
   { key: 'minReviews', label: 'Minimum reviews', min: 0, max: 500, step: 25, fmt: v => String(v) },
   { key: 'maxDetour', label: 'Max detour off route', min: 0.5, max: 20, step: 0.5, fmt: v => fmtMi(v) },
-  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 100, step: 5, fmt: v => fmtMi(v) },
+  { key: 'lookAhead', label: 'Look-ahead distance', min: 5, max: 200, step: 5, fmt: v => fmtMi(v) },
 ];
 
 function buildSteppers() {
@@ -1427,6 +1428,7 @@ function init() {
   $('#prompt-skip').addEventListener('click', () => { state.destPromptDismissed = true; $('#dest-prompt').classList.add('hidden'); startTracking(); });
   $('#menu-btn').addEventListener('click', () => els.settings.classList.remove('hidden'));
   $('#settings-done').addEventListener('click', () => els.settings.classList.add('hidden'));
+  $('#settings-done-top').addEventListener('click', () => els.settings.classList.add('hidden'));
   $('#detail').addEventListener('click', e => { if (e.target.id === 'detail') closeDetail(); });
   $('#sim-btn').addEventListener('click', () => { els.settings.classList.add('hidden'); startSim(); });
 
