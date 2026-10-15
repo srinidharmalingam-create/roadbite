@@ -1,8 +1,10 @@
 /* App shell with offline fallback. Network-FIRST for our own files so code updates
    always reach the user when online; falls back to cache only when offline. */
-const CACHE = 'roadbite-v6';
+const CACHE = 'roadbite-v7';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './config.js', './manifest.webmanifest',
+  './icon-180.png', './icon-192.png', './icon-512.png',
+  './warm/index.html', './warm/warm.css', './warm/manifest.webmanifest',
 ];
 
 self.addEventListener('install', e => {
@@ -25,10 +27,16 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       })
-      .catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
+      .catch(() => caches.match(e.request).then(hit => {
+        if (hit) return hit;
+        if (e.request.mode === 'navigate') return caches.match('./index.html');
+        return new Response(null, { status: 404 });
+      }))
   );
 });
